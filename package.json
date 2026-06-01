@@ -1,0 +1,13 @@
+{
+  "name": "ci-extractor",
+  "version": "1.0.0",
+  "description": "Backend that fetches a brand website and extracts CI (colors, fonts, logo) for the CI Generator.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

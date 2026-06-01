@@ -1,0 +1,10 @@
+# render.yaml — tells Render how to run the CI extractor.
+# Render reads this automatically when you create the service from the repo.
+services:
+  - type: web
+    name: ci-extractor
+    runtime: node
+    plan: free
+    buildCommand: ""        # no dependencies to install
+    startCommand: node server.js
+    healthCheckPath: /health
