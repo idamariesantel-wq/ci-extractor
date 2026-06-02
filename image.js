@@ -64,11 +64,18 @@ async function renderImage(prompt, size) {
   const key = process.env.OPENAI_API_KEY;
   if (!key) return { error: "No OPENAI_API_KEY (needed to render the image)." };
   const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
+  // Quality drives speed/cost the most. Default to "medium" for a good
+  // speed/quality balance; override with OPENAI_IMAGE_QUALITY (low|medium|high).
+  const quality = process.env.OPENAI_IMAGE_QUALITY || "medium";
+  // Fail fast instead of hanging forever if OpenAI is slow.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 90000);
   try {
     const res = await fetch(OPENAI_IMAGES_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-      body: JSON.stringify({ model, prompt, size, n: 1 }),
+      body: JSON.stringify({ model, prompt, size, n: 1, quality }),
+      signal: ctrl.signal,
     });
     if (!res.ok) return { error: `Image generation failed (${res.status}): ${(await res.text()).slice(0,200)}` };
     const data = await res.json();
@@ -77,7 +84,10 @@ async function renderImage(prompt, size) {
     const url = data?.data?.[0]?.url;
     if (url) return { url };
     return { error: "Image API returned no image." };
-  } catch (e) { return { error: String(e) }; }
+  } catch (e) {
+    if (e.name === "AbortError") return { error: "Image generation timed out (90s). Try again — the server may have been waking up." };
+    return { error: String(e) };
+  } finally { clearTimeout(timer); }
 }
 
 export async function generateBackground(ci, product) {
