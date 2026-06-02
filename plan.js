@@ -4,11 +4,12 @@
 // spec as JSON. It does NOT render pixels — the generator renders the spec into
 // the real, print-exact, editable file. The AI decides; the tool prints.
 //
-// Requires an API key in the environment: OPENAI_API_KEY (set on Render).
-// Model is configurable via OPENAI_MODEL (default gpt-4o-mini, a text model —
-// NOT an image model, on purpose: we want a layout plan, not a flat picture).
+// Requires an API key in the environment: ANTHROPIC_API_KEY (set on Render).
+// Model is configurable via ANTHROPIC_MODEL (default claude-3-5-haiku-latest, a
+// text model — NOT an image model, on purpose: we want a layout plan, not a
+// flat picture).
 
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
 // The schema we ask the model to fill. Keeping it small + explicit makes the
 // output reliable and easy for the generator to consume.
@@ -66,28 +67,31 @@ Return ONLY the JSON object.`;
 }
 
 export async function planLayout(ci, product) {
-  const key = process.env.OPENAI_API_KEY;
+  const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
-    return { error: "No OPENAI_API_KEY set on the server. Add it in Render → Environment." };
+    return { error: "No ANTHROPIC_API_KEY set on the server. Add it in Render → Environment." };
   }
-  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const model = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-latest";
 
+  // Anthropic Messages API: system prompt is a top-level field; we nudge the
+  // model to reply with JSON only and parse the first text block.
   const body = {
     model,
+    max_tokens: 1024,
+    temperature: 0.7,
+    system: LAYOUT_INSTRUCTIONS + "\nRespond with ONLY the JSON object, no prose, no markdown fences.",
     messages: [
-      { role: "system", content: LAYOUT_INSTRUCTIONS },
       { role: "user", content: buildUserPrompt(ci, product) },
     ],
-    temperature: 0.7,
-    response_format: { type: "json_object" },
   };
 
   try {
-    const res = await fetch(OPENAI_URL, {
+    const res = await fetch(ANTHROPIC_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${key}`,
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify(body),
     });
@@ -96,7 +100,13 @@ export async function planLayout(ci, product) {
       return { error: `LLM request failed (${res.status}): ${txt.slice(0, 200)}` };
     }
     const data = await res.json();
-    const content = data?.choices?.[0]?.message?.content || "";
+    // response shape: { content: [ { type:"text", text:"..." }, ... ] }
+    let content = "";
+    if (Array.isArray(data?.content)) {
+      content = data.content.filter(b => b.type === "text").map(b => b.text).join("");
+    }
+    // strip any accidental code fences before parsing
+    content = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
     let plan;
     try {
       plan = JSON.parse(content);

@@ -27,7 +27,7 @@ const server = http.createServer(async (req, res) => {
 
   if (u.pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ ok: true, planner: !!process.env.OPENAI_API_KEY }));
+    return res.end(JSON.stringify({ ok: true, planner: !!process.env.ANTHROPIC_API_KEY }));
   }
 
   // --- AI layout planner (Step 3 + 4): POST { ci, product } -> { plan } ---
