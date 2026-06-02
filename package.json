@@ -11,6 +11,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "pdfjs-dist": "^4.0.379"
+    "pdfjs-dist": "^4.0.379",
+    "sharp": "^0.33.5"
   }
 }

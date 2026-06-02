@@ -80,7 +80,23 @@ async function renderImage(prompt, size) {
     if (!res.ok) return { error: `Image generation failed (${res.status}): ${(await res.text()).slice(0,200)}` };
     const data = await res.json();
     const b64 = data?.data?.[0]?.b64_json;
-    if (b64) return { dataUrl: `data:image/png;base64,${b64}` };
+    if (b64) {
+      // The raw PNG from gpt-image-1 is several MB — slow to transfer through
+      // the free tier. Compress to a smaller JPEG so it reaches the browser in
+      // a second or two instead of minutes. (It's a background, so JPEG is fine.)
+      try {
+        const sharp = (await import("sharp")).default;
+        const inBuf = Buffer.from(b64, "base64");
+        const outBuf = await sharp(inBuf)
+          .resize({ width: 1280, withoutEnlargement: true })
+          .jpeg({ quality: 78 })
+          .toBuffer();
+        return { dataUrl: `data:image/jpeg;base64,${outBuf.toString("base64")}` };
+      } catch (e) {
+        // if compression fails for any reason, fall back to the original PNG
+        return { dataUrl: `data:image/png;base64,${b64}` };
+      }
+    }
     const url = data?.data?.[0]?.url;
     if (url) return { url };
     return { error: "Image API returned no image." };
@@ -93,14 +109,35 @@ async function renderImage(prompt, size) {
 export async function generateBackground(ci, product) {
   if (!ci || !product || !product.trim) return { error: "Need ci and product with trim.w/h." };
   const t0 = Date.now();
-  const p = await writeImagePrompt(ci, product);
+  // Speed option: when FAST_IMAGE is set, build the prompt directly from brand
+  // data instead of calling Claude first (saves one API round-trip).
+  let prompt;
+  if (process.env.FAST_IMAGE === "1") {
+    prompt = directPrompt(ci, product);
+  } else {
+    const p = await writeImagePrompt(ci, product);
+    if (p.error) return { error: p.error };
+    prompt = p.prompt;
+  }
   const t1 = Date.now();
-  console.log(`[image] prompt-writing took ${((t1-t0)/1000).toFixed(1)}s`);
-  if (p.error) return { error: p.error };
+  console.log(`[image] prompt-prep took ${((t1-t0)/1000).toFixed(1)}s`);
   const size = pickSize(product.trim);
-  const img = await renderImage(p.prompt, size);
+  const img = await renderImage(prompt, size);
   const t2 = Date.now();
   console.log(`[image] image-render took ${((t2-t1)/1000).toFixed(1)}s (size ${size})`);
-  if (img.error) return { error: img.error, prompt: p.prompt };
-  return { prompt: p.prompt, size, image: img.dataUrl || img.url, timing: { promptMs: t1-t0, renderMs: t2-t1 } };
+  if (img.error) return { error: img.error, prompt };
+  return { prompt, size, image: img.dataUrl || img.url, timing: { promptMs: t1-t0, renderMs: t2-t1 } };
+}
+
+// directPrompt(): builds a background-image prompt from brand data without an
+// LLM call. Same NO-TEXT background rules, just assembled directly for speed.
+function directPrompt(ci, product) {
+  const colors = (ci.colors || []).slice(0, 4).join(", ") || (ci.primary || "#222");
+  const wide = product.trim.w >= product.trim.h;
+  return `Abstract background graphic for a printed marketing display, in the brand colors ${colors}. `
+    + `Clean, modern, high-quality composition with shapes, soft gradients and subtle texture. `
+    + `${wide ? "Wide landscape composition" : "Tall portrait composition"} with a calm, less-busy area `
+    + `(one side or lower third) where headline text can be overlaid legibly later. `
+    + `Absolutely NO text, NO words, NO letters, NO numbers, NO logos anywhere in the image. `
+    + `Backdrop only, evoking the brand's mood.`;
 }

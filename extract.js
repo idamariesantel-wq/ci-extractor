@@ -69,26 +69,53 @@ function saturation(hex) {
   return (max - min) / max;
 }
 
-// Rank colors: a dark "primary", then up to 3 vivid accents, ignoring near-white/black noise.
+// Rank colors into a brand palette. Handles three realities:
+//  - monochrome/elegant brands (NARS): black + white ARE the brand colors
+//  - colorful brands: pick the dominant brand hue, not a rare UI accent
+//  - weight by actual USAGE (frequency), not just vividness, so a rarely-used
+//    bright sale-red doesn't beat the brand's real colors.
 function rankColors(counts) {
   const all = [...counts.entries()]
-    .map(([hex, n]) => ({ hex, n, lum: luminance(hex), sat: saturation(hex) }))
-    // drop pure white/black which appear everywhere and aren't brand colors
-    .filter(c => !(c.lum > 0.96) && !(c.lum < 0.04));
+    .map(([hex, n]) => ({ hex, n, lum: luminance(hex), sat: saturation(hex) }));
+  if (!all.length) return { primary: "#1F2933", accents: [] };
 
-  // primary = a strong dark color used a lot (dark + frequent)
-  const darks = all.filter(c => c.lum < 0.4).sort((a, b) => b.n - a.n);
-  const primary = (darks[0] || all.sort((a,b)=>b.n-a.n)[0] || { hex: "#1F2933" }).hex;
+  const totalUses = all.reduce((s, c) => s + c.n, 0);
+  // a color "matters" if it's used a meaningful share of the time
+  const byUse = [...all].sort((a, b) => b.n - a.n);
 
-  // accents = vivid mid-tone colors, by saturation*frequency, excluding the primary
-  const accents = all
-    .filter(c => c.hex !== primary && c.sat > 0.25 && c.lum > 0.15 && c.lum < 0.9)
-    .sort((a, b) => (b.sat * Math.log(1 + b.n)) - (a.sat * Math.log(1 + a.n)))
-    .map(c => c.hex);
+  // Is this brand essentially monochrome? (very little saturated color used)
+  const colorfulUse = all.filter(c => c.sat > 0.35 && c.lum > 0.1 && c.lum < 0.9)
+                         .reduce((s, c) => s + c.n, 0);
+  const isMono = (colorfulUse / totalUses) < 0.08;
 
-  // dedupe and cap
-  const uniqueAccents = [...new Set(accents)].slice(0, 3);
-  return { primary, accents: uniqueAccents };
+  let primary, accents = [];
+
+  if (isMono) {
+    // elegant black/white brand: primary = the dominant dark (often near-black),
+    // and we keep a clean near-black + near-white pairing.
+    const darks = byUse.filter(c => c.lum < 0.35);
+    const lights = byUse.filter(c => c.lum > 0.9);
+    primary = (darks[0] || byUse[0]).hex;
+    // one subtle accent if there's any real color used at all, else a light tone
+    const anyColor = all.filter(c => c.sat > 0.3 && c.lum > 0.12 && c.lum < 0.88)
+                        .sort((a, b) => b.n - a.n);
+    if (anyColor[0]) accents = [anyColor[0].hex];
+    else if (lights[0]) accents = [lights[0].hex];
+  } else {
+    // colorful brand: primary = the most-USED strong/dark color (brand anchor),
+    // not the most-saturated rare one.
+    const strong = byUse.filter(c => c.lum < 0.55 && !(c.lum < 0.04) );
+    primary = (strong[0] || byUse.filter(c => !(c.lum>0.96))[0] || byUse[0]).hex;
+    // accents = colors that are BOTH reasonably used and reasonably vivid
+    accents = all
+      .filter(c => c.hex !== primary && c.sat > 0.3 && c.lum > 0.15 && c.lum < 0.9)
+      .filter(c => c.n >= Math.max(2, totalUses * 0.01)) // must actually be used
+      .sort((a, b) => (b.n * (0.5 + b.sat)) - (a.n * (0.5 + a.sat)))
+      .map(c => c.hex);
+  }
+
+  const uniqueAccents = [...new Set(accents)].filter(h => h !== primary).slice(0, 3);
+  return { primary, accents: uniqueAccents, monochrome: isMono };
 }
 
 // ---- font parsing ----
