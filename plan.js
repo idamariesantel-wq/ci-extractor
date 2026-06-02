@@ -5,7 +5,7 @@
 // the real, print-exact, editable file. The AI decides; the tool prints.
 //
 // Requires an API key in the environment: ANTHROPIC_API_KEY (set on Render).
-// Model is configurable via ANTHROPIC_MODEL (default claude-3-5-haiku-latest, a
+// Model is configurable via ANTHROPIC_MODEL (default claude-3-5-haiku-20241022, a
 // text model — NOT an image model, on purpose: we want a layout plan, not a
 // flat picture).
 
@@ -71,7 +71,7 @@ export async function planLayout(ci, product) {
   if (!key) {
     return { error: "No ANTHROPIC_API_KEY set on the server. Add it in Render → Environment." };
   }
-  const model = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-latest";
+  const model = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-20241022";
 
   // Anthropic Messages API: system prompt is a top-level field; we nudge the
   // model to reply with JSON only and parse the first text block.
