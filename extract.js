@@ -142,33 +142,59 @@ function collectFonts(css, html) {
   return fonts.slice(0, 5);
 }
 
-// Detect the dominant font weight used for headings/body, plus whether the
-// brand reads as thin/light/regular/bold/black. Heuristic: tally font-weight
-// declarations and pick the most common heading-ish value.
+// Detect the brand's headline weight FEEL. Naively counting every font-weight
+// over-counts bold UI buttons; elegant brands (NARS) use a thin display weight
+// for big headings even if buttons are bold. So we specifically look at weights
+// declared on heading selectors (h1/h2/.title/.hero/display) first, and only
+// fall back to the overall tally if no heading weights are found.
 function detectFontWeight(css) {
-  const weights = [];
+  const toNum = (w) => {
+    w = String(w).toLowerCase();
+    if (w === "bold") return 700; if (w === "normal") return 400;
+    if (w === "lighter") return 300; if (w === "bolder") return 700;
+    const n = parseInt(w, 10); return (n >= 100 && n <= 900) ? n : null;
+  };
+
+  // 1) headline-context weights: blocks whose selector looks like a heading
+  const headingWeights = [];
+  const blockRe = /([^{}]+)\{([^}]*)\}/g;
+  let bm;
+  while ((bm = blockRe.exec(css))) {
+    const sel = bm[1].toLowerCase();
+    if (/\b(h1|h2|h3|\.title|\.headline|\.hero|\.display|\.heading|\[class\*=title\])/.test(sel)) {
+      const wm = /font-weight\s*:\s*(\d{3}|bold|normal|lighter|bolder)/i.exec(bm[2]);
+      if (wm) { const n = toNum(wm[1]); if (n) headingWeights.push(n); }
+    }
+  }
+
+  // 2) overall tally as fallback
+  const allWeights = [];
   const wRe = /font-weight\s*:\s*(\d{3}|bold|normal|lighter|bolder)/gi;
   let m;
-  while ((m = wRe.exec(css))) {
-    let w = m[1].toLowerCase();
-    if (w === "bold") w = 700; else if (w === "normal") w = 400;
-    else if (w === "lighter") w = 300; else if (w === "bolder") w = 700;
-    else w = parseInt(w, 10);
-    if (w >= 100 && w <= 900) weights.push(w);
-  }
-  // also catch Google Fonts wght axis, e.g. ...wght@300;400;700
+  while ((m = wRe.exec(css))) { const n = toNum(m[1]); if (n) allWeights.push(n); }
   const axisRe = /wght@([0-9;,. ]+)/gi;
   while ((m = axisRe.exec(css))) {
-    m[1].split(/[;,]/).forEach(s => { const n = parseInt(s, 10); if (n >= 100 && n <= 900) weights.push(n); });
+    m[1].split(/[;,]/).forEach(s => { const n = parseInt(s, 10); if (n >= 100 && n <= 900) allWeights.push(n); });
   }
-  if (!weights.length) return { weight: null, feel: null };
-  // dominant = most frequent; also note the lightest heavily-used weight
-  const freq = {};
-  weights.forEach(w => freq[w] = (freq[w] || 0) + 1);
-  const dominant = +Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
-  const feel = dominant <= 300 ? "thin" : dominant <= 400 ? "light" : dominant <= 500 ? "regular"
-            : dominant <= 700 ? "bold" : "black";
-  return { weight: dominant, feel };
+
+  // Prefer heading weights. Among them, if a light weight (<=300) appears at all
+  // for headings, that defines the elegant feel — favor it over heavier values.
+  let chosen = null;
+  if (headingWeights.length) {
+    const hasLight = headingWeights.some(w => w <= 300);
+    chosen = hasLight ? Math.min(...headingWeights) : mode(headingWeights);
+  } else if (allWeights.length) {
+    chosen = mode(allWeights);
+  }
+  if (!chosen) return { weight: null, feel: null };
+  const feel = chosen <= 300 ? "thin" : chosen <= 400 ? "light" : chosen <= 500 ? "regular"
+            : chosen <= 700 ? "bold" : "black";
+  return { weight: chosen, feel };
+}
+
+function mode(arr) {
+  const f = {}; arr.forEach(w => f[w] = (f[w] || 0) + 1);
+  return +Object.entries(f).sort((a, b) => b[1] - a[1])[0][0];
 }
 
 // Suggest a Google Fonts family that's a close free lookalike when the brand's
