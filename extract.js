@@ -115,6 +115,59 @@ function collectFonts(css, html) {
   return fonts.slice(0, 5);
 }
 
+// Detect the dominant font weight used for headings/body, plus whether the
+// brand reads as thin/light/regular/bold/black. Heuristic: tally font-weight
+// declarations and pick the most common heading-ish value.
+function detectFontWeight(css) {
+  const weights = [];
+  const wRe = /font-weight\s*:\s*(\d{3}|bold|normal|lighter|bolder)/gi;
+  let m;
+  while ((m = wRe.exec(css))) {
+    let w = m[1].toLowerCase();
+    if (w === "bold") w = 700; else if (w === "normal") w = 400;
+    else if (w === "lighter") w = 300; else if (w === "bolder") w = 700;
+    else w = parseInt(w, 10);
+    if (w >= 100 && w <= 900) weights.push(w);
+  }
+  // also catch Google Fonts wght axis, e.g. ...wght@300;400;700
+  const axisRe = /wght@([0-9;,. ]+)/gi;
+  while ((m = axisRe.exec(css))) {
+    m[1].split(/[;,]/).forEach(s => { const n = parseInt(s, 10); if (n >= 100 && n <= 900) weights.push(n); });
+  }
+  if (!weights.length) return { weight: null, feel: null };
+  // dominant = most frequent; also note the lightest heavily-used weight
+  const freq = {};
+  weights.forEach(w => freq[w] = (freq[w] || 0) + 1);
+  const dominant = +Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
+  const feel = dominant <= 300 ? "thin" : dominant <= 400 ? "light" : dominant <= 500 ? "regular"
+            : dominant <= 700 ? "bold" : "black";
+  return { weight: dominant, feel };
+}
+
+// Suggest a Google Fonts family that's a close free lookalike when the brand's
+// real font isn't freely available. Maps common licensed/system fonts to a
+// visually similar Google font; falls back by style category.
+function suggestGoogleLookalike(name) {
+  if (!name) return null;
+  const n = name.toLowerCase();
+  const map = {
+    "helvetica": "Inter", "helvetica neue": "Inter", "arial": "Inter",
+    "neue haas": "Inter", "akzidenz": "Inter", "univers": "Inter",
+    "futura": "Jost", "avenir": "Nunito Sans", "century gothic": "Jost",
+    "gotham": "Montserrat", "proxima nova": "Montserrat", "circular": "Mulish",
+    "din": "Oswald", "bebas": "Bebas Neue",
+    "garamond": "EB Garamond", "times": "PT Serif", "georgia": "Lora",
+    "didot": "Playfair Display", "bodoni": "Playfair Display",
+    "caslon": "Libre Caslon Text", "baskerville": "Libre Baskerville",
+    "frutiger": "Mukta", "myriad": "Source Sans 3", "gill sans": "Mukta",
+    "sf pro": "Inter", "segoe": "Inter", "roboto": "Roboto",
+  };
+  for (const key in map) { if (n.includes(key)) return map[key]; }
+  // category fallback: serif vs sans by name hint
+  if (/serif|times|garamond|georgia|playfair|caslon|baskerville/.test(n)) return "Lora";
+  return "Inter";
+}
+
 // ---- logo detection ----
 function findLogo(html, baseUrl) {
   const candidates = [];
@@ -186,6 +239,8 @@ export async function extractCI(rawUrl) {
   const colorCounts = collectColors(css + "\n" + html);
   const { primary, accents } = rankColors(colorCounts);
   const fonts = collectFonts(css, html);
+  const { weight, feel } = detectFontWeight(css);
+  const lookalike = suggestGoogleLookalike(fonts[0]);
   const logo = findLogo(html, baseUrl);
   const name = findName(html, baseUrl);
 
@@ -196,6 +251,9 @@ export async function extractCI(rawUrl) {
     colors: [primary, ...accents],
     accents,
     fonts,
+    fontWeight: weight,        // dominant numeric weight (e.g. 300)
+    fontFeel: feel,            // "thin" | "light" | "regular" | "bold" | "black"
+    fontLookalike: lookalike,  // closest free Google font when the real one isn't available
     logo: logo ? { dark: logo, light: logo } : null,
     note: "Heuristic extraction — review before applying.",
   };
