@@ -290,24 +290,56 @@ export async function extractCI(rawUrl) {
   for (const s of sheets) if (s.ok) css += "\n" + s.text;
 
   const colorCounts = collectColors(css + "\n" + html);
-  const { primary, accents } = rankColors(colorCounts);
+  const { primary, accents, monochrome } = rankColors(colorCounts);
   const fonts = collectFonts(css, html);
   const { weight, feel } = detectFontWeight(css);
   const lookalike = suggestGoogleLookalike(fonts[0]);
   const logo = findLogo(html, baseUrl);
   const name = findName(html, baseUrl);
 
+  // theme-color meta + a visible headline sample give the AI extra signal
+  const themeColor = (html.match(/<meta[^>]+name=["']theme-color["'][^>]+content=["']([^"']+)["']/i) || [])[1] || null;
+  const h1 = (html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [])[1];
+  const headlineSample = h1 ? h1.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) : null;
+
+  // Build candidate list (top colors by usage) for the AI judge.
+  const candColors = [...colorCounts.entries()]
+    .map(([hex, n]) => ({ hex, n, lum: luminance(hex), sat: saturation(hex) }))
+    .sort((a, b) => b.n - a.n).slice(0, 14);
+
+  // Ask the AI to judge the real brand identity. If unavailable, keep regex.
+  let aiPrimary = primary, aiAccents = accents, aiFeel = feel, aiWeight = weight, aiMono = monochrome, aiFont = fonts[0], aiReason = null;
+  try {
+    const { judgeBrand } = await import("./brandjudge.js");
+    const judged = await judgeBrand({ colors: candColors, fonts, themeColor, name, headlineSample });
+    if (judged) {
+      aiPrimary = judged.primary || primary;
+      aiAccents = (judged.accents && judged.accents.length) ? judged.accents : accents;
+      aiMono = typeof judged.neutralBrand === "boolean" ? judged.neutralBrand : monochrome;
+      if (judged.fontFeel) {
+        aiFeel = judged.fontFeel;
+        const feelToW = { thin: 300, light: 300, regular: 400, bold: 700, black: 800 };
+        aiWeight = feelToW[judged.fontFeel] || weight;
+      }
+      if (judged.fontName) aiFont = judged.fontName;
+      aiReason = judged.reasoning || null;
+    }
+  } catch { /* fall back to regex result */ }
+
   return {
     name,
     url: baseUrl,
-    primary,
-    colors: [primary, ...accents],
-    accents,
-    fonts,
-    fontWeight: weight,        // dominant numeric weight (e.g. 300)
-    fontFeel: feel,            // "thin" | "light" | "regular" | "bold" | "black"
-    fontLookalike: lookalike,  // closest free Google font when the real one isn't available
+    primary: aiPrimary,
+    colors: [aiPrimary, ...aiAccents],
+    accents: aiAccents,
+    fonts: aiFont ? [aiFont, ...fonts.filter(f => f !== aiFont)] : fonts,
+    fontWeight: aiWeight,
+    fontFeel: aiFeel,
+    fontLookalike: suggestGoogleLookalike(aiFont || fonts[0]),
+    monochrome: aiMono,
+    aiJudged: aiReason != null,
+    aiReasoning: aiReason,
     logo: logo ? { dark: logo, light: logo } : null,
-    note: "Heuristic extraction — review before applying.",
+    note: aiReason ? ("AI-judged CI: " + aiReason) : "Heuristic extraction — review before applying.",
   };
 }
