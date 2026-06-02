@@ -18,24 +18,35 @@ You are a print layout designer. You receive a brand's visual identity and the
 EXACT dimensions of a physical print product. You output ONLY a JSON object
 describing a layout plan. You do NOT draw images or render text yourself.
 
+MOST IMPORTANT: match the DESIGN CHARACTER to the brand. Do not default to a
+dark, bold, busy look. Read the brand signals and decide honestly:
+- An elegant / luxury / beauty / fashion brand (thin fonts, black-and-white or
+  minimal palette) → LIGHT background, lots of whitespace, THIN type, very few
+  words, NO boxes. Restrained and airy. Use layout "luxury".
+- A bold / sporty / youthful / energetic brand (heavy fonts, vivid colors) →
+  dark or saturated background, big bold type, more energy. Use "hero" or "bold-block".
+- A structured / informational / corporate brand → "split" or "editorial" with
+  tidy points.
+Copy must match too: elegant brands get short, calm, sophisticated lines (NOT
+"BOLD", "FEARLESS", "UNLEASH"). Bold brands can be punchy.
+
 Rules:
-- Respect the print's wide/tall proportion. Keep all content inside the safe area.
+- Respect the print's wide/tall proportion. Keep content inside the safe area.
 - Place the logo with breathing room; never center a logo in the middle of text.
-- Choose ONE primary color for background or a clean light background, and use
-  accents sparingly for emphasis (eyebrow, one highlighted word, the CTA).
-- Pick a sensible reading order for the proportion: wide formats read left-to-right
-  (message left, supporting points right); tall formats read top-to-bottom.
-- Keep titles short. Suggest a title and subtitle the user can swap.
+- Use accents sparingly (eyebrow, one highlighted word, the CTA).
+- Wide formats read left-to-right; tall formats top-to-bottom. Keep titles short.
 
 Output JSON with EXACTLY this shape (no prose, no markdown):
 {
   "orientation": "wide" | "tall",
-  "layout": "editorial" | "centered" | "bold-block" | "split" | "minimal",
-  "background": "primary" | "light" | "dark",
+  "mood": "elegant" | "bold" | "minimal" | "playful" | "corporate",
+  "layout": "editorial" | "centered" | "bold-block" | "split" | "minimal" | "luxury" | "hero",
+  "background": "light" | "dark" | "primary",
+  "density": "airy" | "balanced" | "dense",
   "logo": { "position": "top-left" | "top-right" | "top-center", "sizeHint": "small" | "medium" | "large" },
-  "title": "string (short, punchy)",
+  "title": "string (short, punchy — but tone must match the mood)",
   "highlightWord": "string (one word from the title to color, or empty)",
-  "subtitle": "string (one sentence)",
+  "subtitle": "string (one sentence, tone matches mood)",
   "eyebrow": "string (short label like NEW or a category)",
   "accentUsage": "minimal" | "balanced" | "bold",
   "points": [ { "title": "string", "text": "string" } ],
@@ -44,13 +55,16 @@ Output JSON with EXACTLY this shape (no prose, no markdown):
   "rationale": "one short sentence on the design choice"
 }
 
-Pick the "layout" that suits the brand's character and the product proportion:
-- editorial: oversized headline, understated points — confident, magazine-like brands
-- centered: minimal, symmetric, lots of air — premium/elegant brands, fewer points
-- bold-block: accent panels behind eyebrow/highlight — energetic, youthful brands
-- split: side rail + a tidy grid of points — structured, informational brands
-- minimal: type + CTA only, no points — luxury or single-message campaigns
-Vary the choice by brand; do not default to the same layout every time.`;
+Layout guide:
+- luxury: huge airy headline, thin type, no boxes, generous whitespace — elegant beauty/fashion/luxury
+- centered: minimal, symmetric, lots of air — premium brands, few points
+- editorial: oversized headline, understated points — confident, magazine-like
+- hero: oversized statement headline, supporting points along a baseline — bold/dramatic
+- bold-block: accent panels behind eyebrow/highlight — energetic, youthful
+- split: side rail + a tidy grid of points — structured, informational
+- minimal: type + CTA only, no points — single-message campaigns
+For elegant/minimal moods, prefer "airy" density and FEW or ZERO points.
+Vary the choice by brand; do NOT default to the same layout or to dark/bold.`;
 
 function buildUserPrompt(ci, product) {
   const colors = (ci.colors || []).join(", ");
@@ -59,19 +73,26 @@ function buildUserPrompt(ci, product) {
   const hcm = (product.trim.h / 10).toFixed(1);
   const ratio = (product.trim.w / product.trim.h).toFixed(2);
   const orient = product.trim.w >= product.trim.h ? "wide (landscape)" : "tall (portrait)";
+  // Brand character signals — these STEER the design direction.
+  const feel = ci.fontFeel || "unknown";
+  const mono = ci.monochrome ? "YES (black/white/minimal brand)" : "no";
+  const aiNote = ci.aiReasoning ? `\n- designer read: ${ci.aiReasoning}` : "";
   return `BRAND
 - name: ${ci.name || "Unknown"}
 - primary color: ${ci.primary || (ci.colors && ci.colors[0]) || "#222"}
 - palette: ${colors}
 - fonts: ${fonts}
+- font character: ${feel} (thin/light = elegant; bold/black = energetic)
+- monochrome brand: ${mono}${aiNote}
 
 PRINT PRODUCT
 - name: ${product.label || product.key}
 - trim size: ${wcm} x ${hcm} cm  (ratio ${ratio}, ${orient})
 - this is a physical ${orient} display; design for that proportion.
 
-Design a layout plan for a marketing graphic for this brand on this product.
-Return ONLY the JSON object.`;
+Decide the DESIGN CHARACTER that matches THIS brand (don't default to dark/bold),
+then design the layout plan. If the brand reads elegant/minimal/monochrome, make
+it LIGHT, airy, thin, with few words. Return ONLY the JSON object.`;
 }
 
 export async function planLayout(ci, product) {
