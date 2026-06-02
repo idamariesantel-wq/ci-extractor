@@ -30,6 +30,7 @@ Rules:
 Output JSON with EXACTLY this shape (no prose, no markdown):
 {
   "orientation": "wide" | "tall",
+  "layout": "editorial" | "centered" | "bold-block" | "split" | "minimal",
   "background": "primary" | "light" | "dark",
   "logo": { "position": "top-left" | "top-right" | "top-center", "sizeHint": "small" | "medium" | "large" },
   "title": "string (short, punchy)",
@@ -42,7 +43,14 @@ Output JSON with EXACTLY this shape (no prose, no markdown):
   "footer": { "left": "string", "center": "string", "right": "string" },
   "rationale": "one short sentence on the design choice"
 }
-`;
+
+Pick the "layout" that suits the brand's character and the product proportion:
+- editorial: oversized headline, understated points — confident, magazine-like brands
+- centered: minimal, symmetric, lots of air — premium/elegant brands, fewer points
+- bold-block: accent panels behind eyebrow/highlight — energetic, youthful brands
+- split: side rail + a tidy grid of points — structured, informational brands
+- minimal: type + CTA only, no points — luxury or single-message campaigns
+Vary the choice by brand; do not default to the same layout every time.`;
 
 function buildUserPrompt(ci, product) {
   const colors = (ci.colors || []).join(", ");
