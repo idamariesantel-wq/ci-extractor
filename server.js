@@ -3,6 +3,8 @@
 import http from "node:http";
 import { extractCI } from "./extract.js";
 import { planLayout } from "./plan.js";
+import { extractDatasheet } from "./datasheet.js";
+import { generateBackground } from "./image.js";
 
 const PORT = process.env.PORT || 8787;
 
@@ -27,7 +29,7 @@ const server = http.createServer(async (req, res) => {
 
   if (u.pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ ok: true, planner: !!process.env.ANTHROPIC_API_KEY }));
+    return res.end(JSON.stringify({ ok: true, planner: !!process.env.ANTHROPIC_API_KEY, images: !!process.env.OPENAI_API_KEY }));
   }
 
   // --- AI layout planner (Step 3 + 4): POST { ci, product } -> { plan } ---
@@ -62,6 +64,45 @@ const server = http.createServer(async (req, res) => {
       const data = await extractCI(target);
       res.writeHead(data.error ? 502 : 200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify(data));
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: String(e) }));
+    }
+  }
+
+  // --- Datasheet parser (Step 1, generalized): GET /datasheet?url=<product> ---
+  if (u.pathname === "/datasheet") {
+    const target = u.searchParams.get("url");
+    if (!target) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Missing ?url= parameter" }));
+    }
+    try {
+      const data = await extractDatasheet(target);
+      res.writeHead(data.error ? 502 : 200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify(data));
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: String(e) }));
+    }
+  }
+
+  // --- AI background image (Step 4): POST { ci, product } -> { image, prompt } ---
+  if (u.pathname === "/image") {
+    if (req.method !== "POST") {
+      res.writeHead(405, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Use POST with JSON body { ci, product }" }));
+    }
+    const bodyJson = await readJsonBody(req);
+    const { ci, product } = bodyJson;
+    if (!ci || !product || !product.trim) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Body must include ci and product (with product.trim.w/h)" }));
+    }
+    try {
+      const result = await generateBackground(ci, product);
+      res.writeHead(result.error ? 502 : 200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify(result));
     } catch (e) {
       res.writeHead(500, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: String(e) }));

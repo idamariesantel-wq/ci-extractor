@@ -5,6 +5,6 @@ services:
     name: ci-extractor
     runtime: node
     plan: free
-    buildCommand: ""        # no dependencies to install
+    buildCommand: npm install
     startCommand: node server.js
     healthCheckPath: /health
