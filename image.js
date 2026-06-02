@@ -92,10 +92,15 @@ async function renderImage(prompt, size) {
 
 export async function generateBackground(ci, product) {
   if (!ci || !product || !product.trim) return { error: "Need ci and product with trim.w/h." };
+  const t0 = Date.now();
   const p = await writeImagePrompt(ci, product);
+  const t1 = Date.now();
+  console.log(`[image] prompt-writing took ${((t1-t0)/1000).toFixed(1)}s`);
   if (p.error) return { error: p.error };
   const size = pickSize(product.trim);
   const img = await renderImage(p.prompt, size);
+  const t2 = Date.now();
+  console.log(`[image] image-render took ${((t2-t1)/1000).toFixed(1)}s (size ${size})`);
   if (img.error) return { error: img.error, prompt: p.prompt };
-  return { prompt: p.prompt, size, image: img.dataUrl || img.url };
+  return { prompt: p.prompt, size, image: img.dataUrl || img.url, timing: { promptMs: t1-t0, renderMs: t2-t1 } };
 }
