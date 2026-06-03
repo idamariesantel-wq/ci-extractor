@@ -197,9 +197,38 @@ function mode(arr) {
   return +Object.entries(f).sort((a, b) => b[1] - a[1])[0][0];
 }
 
-// Suggest a Google Fonts family that's a close free lookalike when the brand's
-// real font isn't freely available. Maps common licensed/system fonts to a
-// visually similar Google font; falls back by style category.
+// Guard against the AI inventing colors that aren't on the page. We accept its
+// judgment only if its chosen colors are CLOSE to colors actually found in the
+// CSS. This stops hallucinated palettes (e.g. mauve/berry on a black/white site)
+// from overriding the solid regex extraction.
+function isSaneJudgment(judged, candColors) {
+  if (!judged || !/^#[0-9a-fA-F]{6}$/.test(judged.primary || "")) return false;
+  if (!candColors || !candColors.length) return true; // nothing to check against
+  const present = candColors.map(c => c.hex.toUpperCase());
+  const near = (hex) => {
+    const a = hexToRgb(hex); if (!a) return false;
+    return present.some(p => {
+      const b = hexToRgb(p); if (!b) return false;
+      const d = Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b);
+      return d <= 60; // allow small differences (anti-aliasing, near-duplicates)
+    });
+  };
+  // primary must be a color actually seen on the page
+  if (!near(judged.primary)) return false;
+  // at least half the claimed accents must be real page colors
+  const accents = (judged.accents || []).filter(h => /^#[0-9a-fA-F]{6}$/.test(h));
+  if (accents.length) {
+    const realCount = accents.filter(near).length;
+    if (realCount < Math.ceil(accents.length / 2)) return false;
+  }
+  return true;
+}
+function hexToRgb(hex) {
+  const c = String(hex).replace("#", "");
+  if (c.length !== 6) return null;
+  return { r: parseInt(c.substr(0,2),16), g: parseInt(c.substr(2,2),16), b: parseInt(c.substr(4,2),16) };
+}
+
 function suggestGoogleLookalike(name) {
   if (!name) return null;
   const n = name.toLowerCase();
@@ -307,12 +336,13 @@ export async function extractCI(rawUrl) {
     .map(([hex, n]) => ({ hex, n, lum: luminance(hex), sat: saturation(hex) }))
     .sort((a, b) => b.n - a.n).slice(0, 14);
 
-  // Ask the AI to judge the real brand identity. If unavailable, keep regex.
+  // Ask the AI to judge the real brand identity. If unavailable OR if it returns
+  // values that look wrong (junk colors, bogus font), KEEP the regex result.
   let aiPrimary = primary, aiAccents = accents, aiFeel = feel, aiWeight = weight, aiMono = monochrome, aiFont = fonts[0], aiReason = null;
   try {
     const { judgeBrand } = await import("./brandjudge.js");
     const judged = await judgeBrand({ colors: candColors, fonts, themeColor, name, headlineSample });
-    if (judged) {
+    if (judged && isSaneJudgment(judged, candColors)) {
       aiPrimary = judged.primary || primary;
       aiAccents = (judged.accents && judged.accents.length) ? judged.accents : accents;
       aiMono = typeof judged.neutralBrand === "boolean" ? judged.neutralBrand : monochrome;
@@ -321,10 +351,48 @@ export async function extractCI(rawUrl) {
         const feelToW = { thin: 300, light: 300, regular: 400, bold: 700, black: 800 };
         aiWeight = feelToW[judged.fontFeel] || weight;
       }
-      if (judged.fontName) aiFont = judged.fontName;
+      // only accept a font name that's real (not "inherit"/"sans-serif"/blank)
+      if (judged.fontName && !/^(inherit|initial|unset|sans-serif|serif|monospace|none)$/i.test(judged.fontName.trim())) {
+        aiFont = judged.fontName.trim();
+      }
       aiReason = judged.reasoning || null;
+    } else if (judged) {
+      console.log("[extract] AI judgment rejected as implausible; using regex result.");
     }
-  } catch { /* fall back to regex result */ }
+  } catch (e) { console.log("[extract] AI judge error, using regex:", String(e).slice(0,120)); }
+
+  // FALLBACK for un-scrapeable sites: if we ended up with essentially no real
+  // color signal (JS-heavy sites return near-empty HTML), ask the AI what it
+  // KNOWS about this brand and use that instead of returning junk/empty.
+  const realColorCount = candColors.filter(c => !(c.lum > 0.96) && !(c.lum < 0.03)).length;
+  const tooThin = realColorCount < 2;
+  if (tooThin) {
+    try {
+      const { brandFromKnowledge } = await import("./brandjudge.js");
+      const known = await brandFromKnowledge(name, baseUrl);
+      if (known) {
+        console.log("[extract] site unscrapeable; used AI brand knowledge for", name);
+        const feelToW = { thin: 300, light: 300, regular: 400, bold: 700, black: 800 };
+        return {
+          name,
+          url: baseUrl,
+          primary: known.primary,
+          colors: [known.primary, ...(known.accents || [])],
+          accents: known.accents || [],
+          fonts: known.fontName ? [known.fontName] : fonts,
+          fontWeight: feelToW[known.fontFeel] || aiWeight,
+          fontFeel: known.fontFeel || aiFeel,
+          fontLookalike: suggestGoogleLookalike(known.fontName || fonts[0]),
+          monochrome: known.neutralBrand === true,
+          aiJudged: true,
+          fromKnowledge: true,
+          aiReasoning: known.reasoning || null,
+          logo: logo ? { dark: logo, light: logo } : null,
+          note: "Brand identity from AI knowledge (site couldn't be read directly): " + (known.reasoning || ""),
+        };
+      }
+    } catch (e) { console.log("[extract] knowledge fallback error:", String(e).slice(0,120)); }
+  }
 
   return {
     name,

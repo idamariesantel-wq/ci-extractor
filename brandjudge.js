@@ -66,3 +66,42 @@ export async function judgeBrand(candidates) {
     return null;
   }
 }
+
+// brandFromKnowledge(): when a site can't be scraped (JS-heavy, empty HTML),
+// fall back to the AI's own knowledge of well-known brands. Returns the same
+// shape as judgeBrand, or null if the AI doesn't confidently know the brand.
+const KNOW_SYS = `You are a brand designer. Given a brand name and its website URL,
+state the brand's well-known visual identity FROM YOUR KNOWLEDGE. Only answer if
+you are confident you know this specific brand; if unsure, say so.
+Return ONLY JSON:
+{"known": true|false, "primary":"#RRGGBB", "accents":["#RRGGBB"], "neutralBrand":true|false, "fontFeel":"thin|light|regular|bold|black", "fontName":"...", "reasoning":"one short sentence"}
+If you don't confidently know the brand, return {"known": false}.
+Use real, accurate brand colors (e.g. a brand known for black/white = #000000 primary, neutralBrand true).`;
+
+export async function brandFromKnowledge(name, url) {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key || (!name && !url)) return null;
+  const model = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-20241022";
+  try {
+    const res = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model, max_tokens: 400,
+        system: KNOW_SYS,
+        messages: [{ role: "user", content: `Brand name: ${name || "(unknown)"}\nWebsite: ${url || "(unknown)"}\nReturn ONLY the JSON.` }],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    let txt = Array.isArray(data?.content) ? data.content.filter(b => b.type === "text").map(b => b.text).join("") : "";
+    txt = txt.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+    const j = JSON.parse(txt);
+    if (!j || j.known === false) return null;
+    if (!/^#[0-9a-fA-F]{6}$/.test(j.primary || "")) return null;
+    j.accents = (j.accents || []).filter(h => /^#[0-9a-fA-F]{6}$/.test(h)).slice(0, 3);
+    return j;
+  } catch {
+    return null;
+  }
+}
