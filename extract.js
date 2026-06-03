@@ -2,7 +2,9 @@
 // No third-party deps: uses Node's built-in fetch (Node 18+) and regex parsing.
 // Returns { name, colors, fonts, logo } in the shape the CI Generator expects.
 
-const UA = "Mozilla/5.0 (compatible; CI-Extractor/1.0; +https://example.com/bot)";
+// Look like a real browser — many sites 403 obvious bots. This won't beat
+// serious bot-protection (Cloudflare/Akamai), but it gets past basic blocks.
+const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 const FETCH_TIMEOUT_MS = 12000;
 
 // ---- small fetch helper with timeout + sane headers ----
@@ -11,7 +13,16 @@ async function getText(url) {
   const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": UA, "Accept": "text/html,text/css,*/*" },
+      headers: {
+        "User-Agent": UA,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+      },
       redirect: "follow",
       signal: ctrl.signal,
     });
@@ -298,7 +309,37 @@ export async function extractCI(rawUrl) {
 
   const page = await getText(url);
   if (!page.ok) {
-    return { error: `Could not fetch ${url} (status ${page.status})`, url };
+    // The site blocked us (403) or couldn't be fetched. For a KNOWN brand we can
+    // still produce CI from the AI's knowledge instead of failing outright.
+    const guessName = (() => {
+      try { return new URL(url).hostname.replace(/^www\./, "").split(".")[0]; } catch { return null; }
+    })();
+    try {
+      const { brandFromKnowledge } = await import("./brandjudge.js");
+      const known = await brandFromKnowledge(guessName, url);
+      if (known) {
+        console.log(`[extract] fetch failed (${page.status}); used AI brand knowledge for`, guessName);
+        const feelToW = { thin: 300, light: 300, regular: 400, bold: 700, black: 800 };
+        return {
+          name: guessName || "Brand",
+          url,
+          primary: known.primary,
+          colors: [known.primary, ...(known.accents || [])],
+          accents: known.accents || [],
+          fonts: known.fontName ? [known.fontName] : [],
+          fontWeight: feelToW[known.fontFeel] || 400,
+          fontFeel: known.fontFeel || null,
+          fontLookalike: suggestGoogleLookalike(known.fontName),
+          monochrome: known.neutralBrand === true,
+          aiJudged: true,
+          fromKnowledge: true,
+          aiReasoning: known.reasoning || null,
+          logo: null,
+          note: "Site blocked direct reading; brand identity from AI knowledge: " + (known.reasoning || ""),
+        };
+      }
+    } catch (e) { console.log("[extract] knowledge fallback (on fetch fail) error:", String(e).slice(0,120)); }
+    return { error: `Could not fetch ${url} (status ${page.status}) and brand is not recognized from knowledge.`, url };
   }
   const html = page.text;
   const baseUrl = page.finalUrl || url;
@@ -343,8 +384,22 @@ export async function extractCI(rawUrl) {
     const { judgeBrand } = await import("./brandjudge.js");
     const judged = await judgeBrand({ colors: candColors, fonts, themeColor, name, headlineSample });
     if (judged && isSaneJudgment(judged, candColors)) {
-      aiPrimary = judged.primary || primary;
-      aiAccents = (judged.accents && judged.accents.length) ? judged.accents : accents;
+      // The AI decides WHICH colors are the brand's, but we use the EXACT hex
+      // from the page (snap to nearest real color), not the AI's approximation —
+      // so a brand's specific pink stays its real pink, not a guessed near-pink.
+      const snap = (hex) => {
+        const a = hexToRgb(hex); if (!a) return hex;
+        let best = null, bestD = 1e9;
+        for (const c of candColors) {
+          const b = hexToRgb(c.hex); if (!b) continue;
+          const d = Math.abs(a.r-b.r)+Math.abs(a.g-b.g)+Math.abs(a.b-b.b);
+          if (d < bestD) { bestD = d; best = c.hex; }
+        }
+        // snap only if there's a reasonably close real color; else keep AI value
+        return (best && bestD <= 90) ? best.toUpperCase() : hex.toUpperCase();
+      };
+      aiPrimary = snap(judged.primary || primary);
+      aiAccents = (judged.accents && judged.accents.length) ? judged.accents.map(snap) : accents;
       aiMono = typeof judged.neutralBrand === "boolean" ? judged.neutralBrand : monochrome;
       if (judged.fontFeel) {
         aiFeel = judged.fontFeel;
