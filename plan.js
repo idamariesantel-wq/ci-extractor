@@ -85,14 +85,16 @@ function buildUserPrompt(ci, product) {
 - font character: ${feel} (thin/light = elegant; bold/black = energetic)
 - monochrome brand: ${mono}${aiNote}
 
-PRINT PRODUCT
-- name: ${product.label || product.key}
+PRINT PRODUCT (physical format only — do NOT name it in any text)
 - trim size: ${wcm} x ${hcm} cm  (ratio ${ratio}, ${orient})
 - this is a physical ${orient} display; design for that proportion.
 
-Decide the DESIGN CHARACTER that matches THIS brand (don't default to dark/bold),
-then design the layout plan. If the brand reads elegant/minimal/monochrome, make
-it LIGHT, airy, thin, with few words. Return ONLY the JSON object.`;
+IMPORTANT: This is a physical display format. Its internal product/format name
+must NEVER appear in the title, eyebrow, subtitle, points, CTA, footer, or any
+other text. Write campaign copy about the BRAND only, never about the display
+hardware. Decide the DESIGN CHARACTER that matches THIS brand (don't default to
+dark/bold), then design the layout plan. If the brand reads elegant/minimal/
+monochrome, make it LIGHT, airy, thin, with few words. Return ONLY the JSON object.`;
 }
 
 export async function planLayout(ci, product) {
