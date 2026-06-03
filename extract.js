@@ -43,26 +43,27 @@ function abs(base, href) {
 
 // ---- color parsing ----
 // Collect hex colors and rgb()/rgba() colors, count frequency.
-function collectColors(css) {
+function collectColors(css, html) {
   const counts = new Map();
-  const bump = (hex) => counts.set(hex, (counts.get(hex) || 0) + 1);
-
-  // #rgb / #rrggbb
-  const hexRe = /#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b/g;
-  let m;
-  while ((m = hexRe.exec(css))) {
-    let h = m[1];
-    if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
-    bump("#" + h.toUpperCase());
-  }
-  // rgb()/rgba()
-  const rgbRe = /rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/g;
-  while ((m = rgbRe.exec(css))) {
-    const [r, g, b] = [m[1], m[2], m[3]].map(Number);
-    if (r <= 255 && g <= 255 && b <= 255) {
-      const hex = "#" + [r, g, b].map(v => v.toString(16).padStart(2, "0")).join("").toUpperCase();
-      bump(hex);
+  const bump = (hex, weight = 1) => counts.set(hex, (counts.get(hex) || 0) + weight);
+  const normHex = (h) => { if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2]; return "#" + h.toUpperCase(); };
+  const scan = (text, weight) => {
+    if (!text) return;
+    let m;
+    const hexRe = /#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b/g;
+    while ((m = hexRe.exec(text))) bump(normHex(m[1]), weight);
+    const rgbRe = /rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/g;
+    while ((m = rgbRe.exec(text))) {
+      const [r, g, b] = [m[1], m[2], m[3]].map(Number);
+      if (r <= 255 && g <= 255 && b <= 255) bump("#" + [r,g,b].map(v=>v.toString(16).padStart(2,"0")).join("").toUpperCase(), weight);
     }
+  };
+  // base CSS
+  scan(css, 1);
+  // theme-color meta is a deliberate, reliable brand signal — modest extra weight
+  if (html) {
+    const theme = html.match(/<meta[^>]+name=["']theme-color["'][^>]+content=["']([^"']+)["']/i);
+    if (theme) scan(theme[1], 4);
   }
   return counts;
 }
@@ -359,7 +360,7 @@ export async function extractCI(rawUrl) {
   const sheets = await Promise.all(sheetUrls.slice(0, 4).map(u => getText(u)));
   for (const s of sheets) if (s.ok) css += "\n" + s.text;
 
-  const colorCounts = collectColors(css + "\n" + html);
+  const colorCounts = collectColors(css, html);
   const { primary, accents, monochrome } = rankColors(colorCounts);
   const fonts = collectFonts(css, html);
   const { weight, feel } = detectFontWeight(css);
