@@ -380,6 +380,9 @@ export async function extractCI(rawUrl) {
   // Ask the AI to judge the real brand identity. If unavailable OR if it returns
   // values that look wrong (junk colors, bogus font), KEEP the regex result.
   let aiPrimary = primary, aiAccents = accents, aiFeel = feel, aiWeight = weight, aiMono = monochrome, aiFont = fonts[0], aiReason = null;
+  // AI judgment is OFF by default — the pure regex extraction is more reliable
+  // and doesn't hallucinate colors. Set USE_AI_JUDGE=1 to re-enable it.
+  if (process.env.USE_AI_JUDGE === "1") {
   try {
     const { judgeBrand } = await import("./brandjudge.js");
     const judged = await judgeBrand({ colors: candColors, fonts, themeColor, name, headlineSample });
@@ -415,13 +418,14 @@ export async function extractCI(rawUrl) {
       console.log("[extract] AI judgment rejected as implausible; using regex result.");
     }
   } catch (e) { console.log("[extract] AI judge error, using regex:", String(e).slice(0,120)); }
+  } // end USE_AI_JUDGE
 
   // FALLBACK for un-scrapeable sites: if we ended up with essentially no real
   // color signal (JS-heavy sites return near-empty HTML), ask the AI what it
   // KNOWS about this brand and use that instead of returning junk/empty.
   const realColorCount = candColors.filter(c => !(c.lum > 0.96) && !(c.lum < 0.03)).length;
   const tooThin = realColorCount < 2;
-  if (tooThin) {
+  if (tooThin && process.env.USE_AI_JUDGE === "1") {
     try {
       const { brandFromKnowledge } = await import("./brandjudge.js");
       const known = await brandFromKnowledge(name, baseUrl);
