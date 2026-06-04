@@ -40,13 +40,13 @@ const server = http.createServer(async (req, res) => {
       return res.end(JSON.stringify({ error: "Use POST with JSON body { ci, product }" }));
     }
     const bodyJson = await readJsonBody(req);
-    const { ci, product } = bodyJson;
+    const { ci, product, previewOnly } = bodyJson;
     if (!ci || !product || !product.trim) {
       res.writeHead(400, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Body must include ci and product (with product.trim.w/h)" }));
     }
     try {
-      const result = await planLayout(ci, product);
+      const result = await planLayout(ci, product, { previewOnly: !!previewOnly });
       res.writeHead(result.error ? 502 : 200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify(result));
     } catch (e) {

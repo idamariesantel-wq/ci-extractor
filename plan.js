@@ -99,7 +99,14 @@ dark/bold), then design the layout plan. If the brand reads elegant/minimal/
 monochrome, make it LIGHT, airy, thin, with few words. Return ONLY the JSON object.`;
 }
 
-export async function planLayout(ci, product) {
+export async function planLayout(ci, product, opts) {
+  opts = opts || {};
+  const userPrompt = buildUserPrompt(ci, product);
+  const systemPrompt = LAYOUT_INSTRUCTIONS + "\nRespond with ONLY the JSON object, no prose, no markdown fences.";
+  // preview mode: return the exact prompt that WOULD be sent, without calling the model
+  if (opts.previewOnly) {
+    return { preview: true, systemPrompt, userPrompt };
+  }
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
     return { error: "No ANTHROPIC_API_KEY set on the server. Add it in Render → Environment." };
@@ -112,9 +119,9 @@ export async function planLayout(ci, product) {
     model,
     max_tokens: 1024,
     temperature: 0.7,
-    system: LAYOUT_INSTRUCTIONS + "\nRespond with ONLY the JSON object, no prose, no markdown fences.",
+    system: systemPrompt,
     messages: [
-      { role: "user", content: buildUserPrompt(ci, product) },
+      { role: "user", content: userPrompt },
     ],
   };
 
@@ -146,7 +153,7 @@ export async function planLayout(ci, product) {
     } catch {
       return { error: "LLM did not return valid JSON.", raw: content.slice(0, 300) };
     }
-    return { plan };
+    return { plan, systemPrompt, userPrompt };
   } catch (e) {
     return { error: String(e) };
   }
