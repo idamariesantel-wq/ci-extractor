@@ -5,6 +5,7 @@ import { extractCI } from "./extract.js";
 import { planLayout } from "./plan.js";
 import { extractDatasheet } from "./datasheet.js";
 import { generateBackground } from "./image.js";
+import { analyzeImage } from "./vision.js";
 
 const PORT = process.env.PORT || 8787;
 
@@ -12,7 +13,7 @@ const PORT = process.env.PORT || 8787;
 function readJsonBody(req) {
   return new Promise((resolve) => {
     let data = "";
-    req.on("data", (c) => { data += c; if (data.length > 1e6) req.destroy(); });
+    req.on("data", (c) => { data += c; if (data.length > 12e6) req.destroy(); });
     req.on("end", () => { try { resolve(JSON.parse(data || "{}")); } catch { resolve({}); } });
     req.on("error", () => resolve({}));
   });
@@ -48,6 +49,28 @@ const server = http.createServer(async (req, res) => {
       const result = await planLayout(ci, product);
       res.writeHead(result.error ? 502 : 200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify(result));
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: String(e) }));
+    }
+  }
+
+  // --- Vision: POST { imageData (base64), mediaType } -> { mood, productContext, ... } ---
+  if (u.pathname === "/vision") {
+    if (req.method !== "POST") {
+      res.writeHead(405, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Use POST with JSON body { imageData, mediaType }" }));
+    }
+    const bodyJson = await readJsonBody(req);
+    const { imageData, mediaType } = bodyJson || {};
+    if (!imageData) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Body must include imageData (base64)" }));
+    }
+    try {
+      const result = await analyzeImage(imageData, mediaType);
+      res.writeHead(result && result.error ? 502 : 200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify(result || { error: "no result" }));
     } catch (e) {
       res.writeHead(500, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: String(e) }));

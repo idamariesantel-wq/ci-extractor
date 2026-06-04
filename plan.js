@@ -77,13 +77,15 @@ function buildUserPrompt(ci, product) {
   const feel = ci.fontFeel || "unknown";
   const mono = ci.monochrome ? "YES (black/white/minimal brand)" : "no";
   const aiNote = ci.aiReasoning ? `\n- designer read: ${ci.aiReasoning}` : "";
+  const visionNote = ci.productContext ? `\n- product/context (from an uploaded image): ${ci.productContext}` : "";
+  const visionSummary = ci.visionSummary ? `\n- visual style to match: ${ci.visionSummary}` : "";
   return `BRAND
 - name: ${ci.name || "Unknown"}
 - primary color: ${ci.primary || (ci.colors && ci.colors[0]) || "#222"}
 - palette: ${colors}
 - fonts: ${fonts}
 - font character: ${feel} (thin/light = elegant; bold/black = energetic)
-- monochrome brand: ${mono}${aiNote}
+- monochrome brand: ${mono}${aiNote}${visionNote}${visionSummary}
 
 PRINT PRODUCT (physical format only — do NOT name it in any text)
 - trim size: ${wcm} x ${hcm} cm  (ratio ${ratio}, ${orient})
