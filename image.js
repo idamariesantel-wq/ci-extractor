@@ -36,14 +36,18 @@ graphic for a printed marketing display. Hard rules for the prompt you output:
   product-evocative imagery.
 - Leave a visually calm region (e.g. one side or lower third) where headline
   text can be overlaid legibly later.
-- PRIORITY ORDER for the look: (1) the USER'S SPECIFIC REQUESTS, (2) the chosen
-  STYLE, (3) the brand colours. If the user's request conflicts with the brand
-  colours (e.g. they ask for "colorful" but the brand is blue), FOLLOW THE USER —
-  their request wins. Only fall back to brand colours when the user gave no
-  colour/visual direction of their own.
+- BALANCE the brand and the user's wishes — it must look ON-BRAND AND follow the
+  user's request:
+  • The brand colours are the BASE palette. Keep the result recognisably on-brand.
+  • The user's requests + chosen style shape the MOOD, theme, composition and
+    energy (e.g. "olympics-like" => dynamic, sporty, motion, rings/arcs feel).
+  • ONLY if the user EXPLICITLY asks for different colours (e.g. "make it colourful",
+    "use gold and red") do you expand or shift the palette — and even then, weave
+    the brand's primary colour in so it still ties back to the brand.
+  Never throw the brand away, and never ignore the user. Combine both.
 Output ONLY the prompt text, one paragraph, no preamble.`;
 
-  // Style + user notes lead the brief — they are the primary driver, not an afterthought.
+  // Style + user notes shape the mood; brand colours stay the base palette.
   const STYLE_BRIEF = {
     technical: "technical and precise: blueprint/grid feel, fine lines, schematic, engineered, structured.",
     clean: "clean and uncluttered: smooth surfaces, lots of calm negative space, neutral and tidy.",
@@ -55,15 +59,13 @@ Output ONLY the prompt text, one paragraph, no preamble.`;
     motivating: "motivating and energetic: dynamic movement, uplifting light, forward energy.",
   };
   const styleKey = ci.direction || "";
-  const styleLine = styleKey ? `\nSTYLE: ${STYLE_BRIEF[styleKey] || styleKey}` : "";
-  const notesLine = ci.directionNotes ? `\n★ USER'S SPECIFIC REQUESTS (HIGHEST PRIORITY — these define the look, override brand colours if they conflict): ${ci.directionNotes}` : "";
-  const colourLine = ci.directionNotes
-    ? `\nBrand colours (use ONLY if they don't conflict with the user's request above): ${(ci.colors || []).join(", ") || ci.primary || "#222"}`
-    : `\nBrand colours to use: ${(ci.colors || []).join(", ") || ci.primary || "#222"}`;
-  const user = `Make a background for a marketing display.${notesLine}${styleLine}
-${colourLine}
+  const styleLine = styleKey ? `\nStyle to express: ${STYLE_BRIEF[styleKey] || styleKey}` : "";
+  const notesLine = ci.directionNotes ? `\nUser's requests (shape the mood/theme around this, keep it on-brand): ${ci.directionNotes}` : "";
+  const palette = (ci.colors || []).join(", ") || ci.primary || "#222";
+  const user = `Make an ON-BRAND background for "${ci.name || "the brand"}".
+Brand colours (base palette — keep it recognisably on-brand): ${palette}${notesLine}${styleLine}
 Proportion: ${(product.trim.w/product.trim.h).toFixed(2)} (${product.trim.w>=product.trim.h?"wide/landscape":"tall/portrait"}).
-Write the background-image prompt, leading with the user's requests above.`;
+Write the background-image prompt: on-brand colours as the base, with the user's requests and style shaping the mood and composition.`;
 
   try {
     const res = await fetch(ANTHROPIC_URL, {
