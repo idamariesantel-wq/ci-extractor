@@ -142,6 +142,7 @@ uncluttered. High contrast so it reads on a projector or shared screen.`,
   const dirDef = ci.direction ? (DIRECTION_DEF[ci.direction] || ci.direction) : "";
   const dirBlock = ci.direction ? `\nDESIGN DIRECTION (overall creative steer — applies to everything): ${dirDef}` : "";
   const notesBlock = ci.directionNotes ? `\nUSER'S SPECIFIC REQUESTS (follow these closely): ${ci.directionNotes}` : "";
+  const toneBlock = ci.tone ? `\nTONE OF VOICE for all copy (headline, subtitle, CTA): ${ci.tone} — write the words in this tone.` : "";
 
   return `BRAND
 - name: ${ci.name || "Unknown"}
@@ -149,7 +150,7 @@ uncluttered. High contrast so it reads on a projector or shared screen.`,
 - palette: ${colors}
 - fonts: ${fonts}
 - font character: ${feel} (thin/light = elegant; bold/black = energetic)
-- monochrome brand: ${mono}${aiNote}${visionNote}${visionSummary}${dirBlock}${notesBlock}
+- monochrome brand: ${mono}${aiNote}${visionNote}${visionSummary}${dirBlock}${notesBlock}${toneBlock}
 ${ucBlock}
 FORMAT (do NOT name the format in any text)
 - size: ${wcm} x ${hcm} cm  (ratio ${ratio}, ${orient})
@@ -279,6 +280,49 @@ Each object uses the exact plan shape described above. No prose, no markdown.`;
     try { plans = JSON.parse(content); } catch { return { error: "LLM did not return valid JSON array.", raw: content.slice(0,300) }; }
     if (!Array.isArray(plans)) plans = [plans];
     return { plans };
+  } catch (e) {
+    return { error: String(e) };
+  }
+}
+
+// suggestCopy: propose 3 headline+subtitle ideas for the brand in a chosen tone.
+// Used by the wording step so the user can pick a ready-made message or get
+// inspiration before writing their own. One small text call.
+export async function suggestCopy(ci, tone) {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return { error: "No ANTHROPIC_API_KEY set on the server." };
+  const model = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-20241022";
+  const TONE_DEF = {
+    professional: "professional: credible, polished, business-appropriate.",
+    playful: "playful: fun, light, friendly, a bit cheeky.",
+    bold: "bold: punchy, confident, high-energy, short.",
+    minimal: "minimal: very few words, understated, calm.",
+    emotional: "emotional: warm, human, evocative, feeling-led.",
+    premium: "premium: refined, aspirational, elegant, high-end.",
+    direct: "direct: clear, plain, action-oriented, no fluff.",
+  };
+  const toneLine = tone ? `Tone: ${TONE_DEF[tone] || tone}` : "Tone: on-brand.";
+  const sys = `You are a brand copywriter. Propose THREE distinct campaign message
+ideas for the brand below, in the requested tone. Each idea = a short headline
+(<= 6 words) plus a one-line subtitle (<= 12 words). Do NOT mention the physical
+format or product type. Return ONLY JSON: [{"headline":"...","subtitle":"..."}, ...]
+exactly 3 items, no prose, no markdown.`;
+  const user = `Brand: ${ci.name || "the brand"}
+${ci.productContext ? "Product/context: " + ci.productContext + "\n" : ""}${toneLine}
+Write 3 ideas.`;
+  try {
+    const res = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model, max_tokens: 600, temperature: 0.9, system: sys, messages: [{ role: "user", content: user }] }),
+    });
+    if (!res.ok) return { error: `Copy request failed (${res.status})` };
+    const data = await res.json();
+    let txt = Array.isArray(data?.content) ? data.content.filter(b=>b.type==="text").map(b=>b.text).join("") : "";
+    txt = txt.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+    let ideas = JSON.parse(txt);
+    if (!Array.isArray(ideas)) ideas = [ideas];
+    return { ideas: ideas.slice(0, 3) };
   } catch (e) {
     return { error: String(e) };
   }

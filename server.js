@@ -2,7 +2,7 @@
 // CORS is enabled so the standalone CI Generator HTML can call it from the browser.
 import http from "node:http";
 import { extractCI } from "./extract.js";
-import { planLayout, planThreeVariants } from "./plan.js";
+import { planLayout, planThreeVariants, suggestCopy } from "./plan.js";
 import { extractDatasheet } from "./datasheet.js";
 import { generateBackground } from "./image.js";
 import { analyzeImage } from "./vision.js";
@@ -47,6 +47,28 @@ const server = http.createServer(async (req, res) => {
     }
     try {
       const result = await planLayout(ci, product, { previewOnly: !!previewOnly });
+      res.writeHead(result.error ? 502 : 200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify(result));
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: String(e) }));
+    }
+  }
+
+  // --- Copy ideas: POST { ci, tone } -> { ideas:[{headline,subtitle} x3] } ---
+  if (u.pathname === "/copy") {
+    if (req.method !== "POST") {
+      res.writeHead(405, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Use POST with JSON body { ci, tone }" }));
+    }
+    const bodyJson = await readJsonBody(req);
+    const { ci, tone } = bodyJson || {};
+    if (!ci) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Body must include ci" }));
+    }
+    try {
+      const result = await suggestCopy(ci, tone);
       res.writeHead(result.error ? 502 : 200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify(result));
     } catch (e) {
