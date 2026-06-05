@@ -36,16 +36,31 @@ graphic for a printed marketing display. Hard rules for the prompt you output:
   product-evocative imagery in the brand's colors.
 - Leave a visually calm region (e.g. one side or lower third) where headline
   text can be overlaid legibly later.
-- Match the brand's mood and color palette. Print-suitable, high quality, clean.
+- The STYLE and the user's SPECIFIC REQUESTS below are the most important driver
+  of the look — lead with them. Use the brand colours, but let the chosen style
+  define the visual treatment (composition, texture, mood).
 Output ONLY the prompt text, one paragraph, no preamble.`;
 
-  const dirLine = ci.direction ? `\nDesign direction: ${ci.direction} — let the background reflect this feel.` : "";
-  const notesLine = ci.directionNotes ? `\nSpecific requests to honour: ${ci.directionNotes}` : "";
-  const user = `Brand: ${ci.name || "Unknown"}
-Primary color: ${ci.primary || (ci.colors && ci.colors[0]) || "#222"}
-Palette: ${(ci.colors || []).join(", ")}
-Product: ${product.label || product.key}, proportion ${(product.trim.w/product.trim.h).toFixed(2)} (${product.trim.w>=product.trim.h?"wide/landscape":"tall/portrait"}).${dirLine}${notesLine}
-Write the background-image prompt.`;
+  // Style + user notes lead the brief — they are the primary driver, not an afterthought.
+  const STYLE_BRIEF = {
+    technical: "technical and precise: blueprint/grid feel, fine lines, schematic, engineered, structured.",
+    clean: "clean and uncluttered: smooth surfaces, lots of calm negative space, neutral and tidy.",
+    minimal: "minimal: almost empty, one subtle gradient or shape, maximal restraint.",
+    abstract: "abstract: flowing organic or geometric forms, artistic, non-literal.",
+    premium: "premium and luxurious: rich depth, subtle sheen, refined materials, high-end and elegant.",
+    edgy: "edgy and raw: high contrast, bold asymmetry, gritty texture, daring and unconventional.",
+    funky: "funky and retro: playful shapes, expressive unexpected colour combinations, energetic.",
+    motivating: "motivating and energetic: dynamic movement, uplifting light, forward energy.",
+  };
+  const styleKey = ci.direction || "";
+  const styleLine = styleKey ? `\nSTYLE (lead with this): ${STYLE_BRIEF[styleKey] || styleKey}` : "";
+  const notesLine = ci.directionNotes ? `\nUSER'S SPECIFIC REQUESTS (must honour these): ${ci.directionNotes}` : "";
+  const user = `Make a ${styleKey||"on-brand"} background.${styleLine}${notesLine}
+
+Brand: ${ci.name || "Unknown"}
+Brand colours to use: ${(ci.colors || []).join(", ") || ci.primary || "#222"}
+Proportion: ${(product.trim.w/product.trim.h).toFixed(2)} (${product.trim.w>=product.trim.h?"wide/landscape":"tall/portrait"}).
+Write the background-image prompt, leading with the style and the user's requests.`;
 
   try {
     const res = await fetch(ANTHROPIC_URL, {
