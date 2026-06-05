@@ -33,12 +33,14 @@ async function writeImagePrompt(ci, product) {
 graphic for a printed marketing display. Hard rules for the prompt you output:
 - The image must contain NO text, NO words, NO letters, NO numbers, NO logos.
 - It is a background/backdrop only: shapes, gradients, texture, abstract or
-  product-evocative imagery in the brand's colors.
+  product-evocative imagery.
 - Leave a visually calm region (e.g. one side or lower third) where headline
   text can be overlaid legibly later.
-- The STYLE and the user's SPECIFIC REQUESTS below are the most important driver
-  of the look — lead with them. Use the brand colours, but let the chosen style
-  define the visual treatment (composition, texture, mood).
+- PRIORITY ORDER for the look: (1) the USER'S SPECIFIC REQUESTS, (2) the chosen
+  STYLE, (3) the brand colours. If the user's request conflicts with the brand
+  colours (e.g. they ask for "colorful" but the brand is blue), FOLLOW THE USER —
+  their request wins. Only fall back to brand colours when the user gave no
+  colour/visual direction of their own.
 Output ONLY the prompt text, one paragraph, no preamble.`;
 
   // Style + user notes lead the brief — they are the primary driver, not an afterthought.
@@ -53,14 +55,15 @@ Output ONLY the prompt text, one paragraph, no preamble.`;
     motivating: "motivating and energetic: dynamic movement, uplifting light, forward energy.",
   };
   const styleKey = ci.direction || "";
-  const styleLine = styleKey ? `\nSTYLE (lead with this): ${STYLE_BRIEF[styleKey] || styleKey}` : "";
-  const notesLine = ci.directionNotes ? `\nUSER'S SPECIFIC REQUESTS (must honour these): ${ci.directionNotes}` : "";
-  const user = `Make a ${styleKey||"on-brand"} background.${styleLine}${notesLine}
-
-Brand: ${ci.name || "Unknown"}
-Brand colours to use: ${(ci.colors || []).join(", ") || ci.primary || "#222"}
+  const styleLine = styleKey ? `\nSTYLE: ${STYLE_BRIEF[styleKey] || styleKey}` : "";
+  const notesLine = ci.directionNotes ? `\n★ USER'S SPECIFIC REQUESTS (HIGHEST PRIORITY — these define the look, override brand colours if they conflict): ${ci.directionNotes}` : "";
+  const colourLine = ci.directionNotes
+    ? `\nBrand colours (use ONLY if they don't conflict with the user's request above): ${(ci.colors || []).join(", ") || ci.primary || "#222"}`
+    : `\nBrand colours to use: ${(ci.colors || []).join(", ") || ci.primary || "#222"}`;
+  const user = `Make a background for a marketing display.${notesLine}${styleLine}
+${colourLine}
 Proportion: ${(product.trim.w/product.trim.h).toFixed(2)} (${product.trim.w>=product.trim.h?"wide/landscape":"tall/portrait"}).
-Write the background-image prompt, leading with the style and the user's requests.`;
+Write the background-image prompt, leading with the user's requests above.`;
 
   try {
     const res = await fetch(ANTHROPIC_URL, {
