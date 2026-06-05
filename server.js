@@ -2,7 +2,7 @@
 // CORS is enabled so the standalone CI Generator HTML can call it from the browser.
 import http from "node:http";
 import { extractCI } from "./extract.js";
-import { planLayout } from "./plan.js";
+import { planLayout, planThreeVariants } from "./plan.js";
 import { extractDatasheet } from "./datasheet.js";
 import { generateBackground } from "./image.js";
 import { analyzeImage } from "./vision.js";
@@ -47,6 +47,28 @@ const server = http.createServer(async (req, res) => {
     }
     try {
       const result = await planLayout(ci, product, { previewOnly: !!previewOnly });
+      res.writeHead(result.error ? 502 : 200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify(result));
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: String(e) }));
+    }
+  }
+
+  // --- Three distinct variants: POST { ci, product } -> { plans:[3] } ---
+  if (u.pathname === "/variants") {
+    if (req.method !== "POST") {
+      res.writeHead(405, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Use POST with JSON body { ci, product }" }));
+    }
+    const bodyJson = await readJsonBody(req);
+    const { ci, product } = bodyJson;
+    if (!ci || !product || !product.trim) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Body must include ci and product (with product.trim.w/h)" }));
+    }
+    try {
+      const result = await planThreeVariants(ci, product);
       res.writeHead(result.error ? 502 : 200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify(result));
     } catch (e) {

@@ -206,3 +206,55 @@ export async function planLayout(ci, product, opts) {
     return { error: String(e) };
   }
 }
+
+// planThreeVariants: ask the AI for THREE distinct layout plans for THIS brand
+// in a single call. The model sees all three at once, so it makes them genuinely
+// different from each other WHILE keeping each one true to the brand — instead of
+// us forcing fixed layouts that look identical across every brand.
+export async function planThreeVariants(ci, product, opts) {
+  opts = opts || {};
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return { error: "No ANTHROPIC_API_KEY set on the server." };
+  const model = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-20241022";
+  const base = buildUserPrompt(ci, product);
+  // The user picked an overall style direction (mood). All three variants must
+  // stay within THAT direction — but be three distinct, brand-unique takes on it.
+  const chosen = ci.moodHint || ci.mood || null;
+  const moodLine = chosen
+    ? `\nThe user chose the overall style: "${chosen}". ALL THREE concepts must keep this
+overall ${chosen} feeling — do NOT switch to a different mood. Within that ${chosen}
+direction, make the three genuinely different from each other (vary layout,
+light/dark, density, emphasis, composition) and unique to THIS brand. Set
+"mood":"${chosen}" on all three.`
+    : `\nMake the three genuinely different moods/directions, each true to the brand.`;
+  const sys = LAYOUT_INSTRUCTIONS + `
+
+You will produce THREE DISTINCT layout concepts for the SAME brand and format.${moodLine}
+Do not output three near-identical designs. Think of them as three different
+creative directions a designer would pitch for this specific brand within the
+chosen style.
+Respond with ONLY a JSON array of exactly 3 plan objects: [ {plan1}, {plan2}, {plan3} ].
+Each object uses the exact plan shape described above. No prose, no markdown.`;
+  const body = {
+    model, max_tokens: 2048, temperature: 0.9,
+    system: sys,
+    messages: [{ role: "user", content: base + "\n\nReturn ONLY a JSON array of 3 distinct plan objects for this brand." }],
+  };
+  try {
+    const res = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) { const txt = await res.text(); return { error: `LLM request failed (${res.status}): ${txt.slice(0,200)}` }; }
+    const data = await res.json();
+    let content = Array.isArray(data?.content) ? data.content.filter(b => b.type === "text").map(b => b.text).join("") : "";
+    content = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+    let plans;
+    try { plans = JSON.parse(content); } catch { return { error: "LLM did not return valid JSON array.", raw: content.slice(0,300) }; }
+    if (!Array.isArray(plans)) plans = [plans];
+    return { plans };
+  } catch (e) {
+    return { error: String(e) };
+  }
+}
