@@ -39,10 +39,12 @@ graphic for a printed marketing display. Hard rules for the prompt you output:
 - Match the brand's mood and color palette. Print-suitable, high quality, clean.
 Output ONLY the prompt text, one paragraph, no preamble.`;
 
+  const dirLine = ci.direction ? `\nDesign direction: ${ci.direction} — let the background reflect this feel.` : "";
+  const notesLine = ci.directionNotes ? `\nSpecific requests to honour: ${ci.directionNotes}` : "";
   const user = `Brand: ${ci.name || "Unknown"}
 Primary color: ${ci.primary || (ci.colors && ci.colors[0]) || "#222"}
 Palette: ${(ci.colors || []).join(", ")}
-Product: ${product.label || product.key}, proportion ${(product.trim.w/product.trim.h).toFixed(2)} (${product.trim.w>=product.trim.h?"wide/landscape":"tall/portrait"}).
+Product: ${product.label || product.key}, proportion ${(product.trim.w/product.trim.h).toFixed(2)} (${product.trim.w>=product.trim.h?"wide/landscape":"tall/portrait"}).${dirLine}${notesLine}
 Write the background-image prompt.`;
 
   try {

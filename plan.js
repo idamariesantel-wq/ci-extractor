@@ -127,13 +127,29 @@ uncluttered. High contrast so it reads on a projector or shared screen.`,
   const ucRule = USE_CASE_RULES[ci.useCase] || "";
   const ucBlock = ucRule ? ("\n" + ucRule + "\n") : "";
 
+  // Overall design direction (from the first wizard step) + the user's free-text
+  // notes. This is the top-level creative steer and must shape every choice.
+  const DIRECTION_DEF = {
+    minimal: "MINIMAL: strip everything back, maximal whitespace, very few elements, restraint above all.",
+    clean: "CLEAN: tidy, neutral, uncluttered, clear grid, nothing decorative.",
+    technical: "TECHNICAL: precise and structured, data/spec feel, fine lines, monospace-like rigor, functional.",
+    bold: "BOLD: big, high-impact, confident, oversized type, strong blocks of colour.",
+    premium: "PREMIUM: luxurious and refined, high-end, elegant restraint, generous space, sophisticated.",
+    playful: "PLAYFUL: fun, lively, friendly, energetic, approachable.",
+    edgy: "EDGY: raw, daring, unconventional, asymmetric, high tension.",
+    funky: "FUNKY: quirky, retro, expressive, unexpected colour and shape combinations.",
+  };
+  const dirDef = ci.direction ? (DIRECTION_DEF[ci.direction] || ci.direction) : "";
+  const dirBlock = ci.direction ? `\nDESIGN DIRECTION (overall creative steer — applies to everything): ${dirDef}` : "";
+  const notesBlock = ci.directionNotes ? `\nUSER'S SPECIFIC REQUESTS (follow these closely): ${ci.directionNotes}` : "";
+
   return `BRAND
 - name: ${ci.name || "Unknown"}
 - primary color: ${ci.primary || (ci.colors && ci.colors[0]) || "#222"}
 - palette: ${colors}
 - fonts: ${fonts}
 - font character: ${feel} (thin/light = elegant; bold/black = energetic)
-- monochrome brand: ${mono}${aiNote}${visionNote}${visionSummary}
+- monochrome brand: ${mono}${aiNote}${visionNote}${visionSummary}${dirBlock}${notesBlock}
 ${ucBlock}
 FORMAT (do NOT name the format in any text)
 - size: ${wcm} x ${hcm} cm  (ratio ${ratio}, ${orient})
