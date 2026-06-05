@@ -217,15 +217,24 @@ export async function planThreeVariants(ci, product, opts) {
   if (!key) return { error: "No ANTHROPIC_API_KEY set on the server." };
   const model = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-20241022";
   const base = buildUserPrompt(ci, product);
-  // The user picked an overall style direction (mood). All three variants must
-  // stay within THAT direction — but be three distinct, brand-unique takes on it.
+  // The user picked an overall style direction (mood). Give each mood a CONCRETE
+  // visual definition so the choice clearly changes the output, and so all three
+  // variants stay within that direction while differing from each other.
+  const MOOD_DEF = {
+    elegant: `ELEGANT/LUXURY: light or soft background, THIN type, huge whitespace, very few words, no boxes, refined and calm. Layouts: "luxury" or "centered" or "minimal".`,
+    bold: `BOLD/STRONG: dark or saturated background, HEAVY/BLACK type, oversized headline, high energy, strong accent blocks. Layouts: "hero" or "bold-block".`,
+    corporate: `CORPORATE/CLEAN: structured and tidy, medium weight, clear grid of points, trustworthy and professional. Layouts: "split" or "editorial".`,
+    playful: `PLAYFUL/FRESH: lively, rounded, generous accent colour use, friendly and energetic but not heavy. Layouts: "bold-block" or "centered".`,
+  };
   const chosen = ci.moodHint || ci.mood || null;
   const moodLine = chosen
-    ? `\nThe user chose the overall style: "${chosen}". ALL THREE concepts must keep this
-overall ${chosen} feeling — do NOT switch to a different mood. Within that ${chosen}
-direction, make the three genuinely different from each other (vary layout,
-light/dark, density, emphasis, composition) and unique to THIS brand. Set
-"mood":"${chosen}" on all three.`
+    ? `\nThe user chose the overall style: "${chosen}".
+DEFINITION — ${MOOD_DEF[chosen] || chosen}
+ALL THREE concepts MUST clearly express this "${chosen}" style (do NOT drift toward
+another mood, and do NOT default to dark/bold if the chosen style is elegant).
+Within that ${chosen} direction, make the three genuinely different from each other
+(vary layout archetype, composition, emphasis, and light/dark where the style allows)
+and unique to THIS brand. Set "mood":"${chosen}" on all three.`
     : `\nMake the three genuinely different moods/directions, each true to the brand.`;
   const sys = LAYOUT_INSTRUCTIONS + `
 
