@@ -36,6 +36,26 @@ Rules:
 - Use accents sparingly (eyebrow, one highlighted word, the CTA).
 - Wide formats read left-to-right; tall formats top-to-bottom. Keep titles short.
 
+Graphic-design best practices (apply ALL of these):
+- HIERARCHY: one clear focal point. The headline is the largest, most dominant
+  element; eyebrow/subtitle/points are clearly smaller and secondary. Never let
+  two elements compete for first attention.
+- CONTRAST: ensure text is clearly readable against its background. Highlight ONE
+  word at most in an accent colour, and only if it stays legible.
+- TYPOGRAPHY: keep the headline short (ideally <= 5 words). Don't write long
+  sentences in the title. Subtitle is one short line. Limit total text — white
+  space is part of the design.
+- SPACING & BALANCE: prefer an "airy" or "balanced" density unless the brand is
+  truly energetic. Don't cram. Distribute weight so the layout doesn't feel
+  lopsided.
+- CTA: the call-to-action must be visually distinct and clearly the action step
+  (a short verb-led label). Place it where the eye lands last (bottom or a
+  deliberate focal spot), never buried among the points.
+- BRAND CONSISTENCY: use ONLY the brand's palette and character. Don't introduce
+  unrelated colours or a tone that contradicts the brand.
+- RESTRAINT: fewer, stronger elements beat many weak ones. If unsure, choose
+  fewer points and more space.
+
 Output JSON with EXACTLY this shape (no prose, no markdown):
 {
   "orientation": "wide" | "tall",
@@ -79,6 +99,34 @@ function buildUserPrompt(ci, product) {
   const aiNote = ci.aiReasoning ? `\n- designer read: ${ci.aiReasoning}` : "";
   const visionNote = ci.productContext ? `\n- product/context (from an uploaded image): ${ci.productContext}` : "";
   const visionSummary = ci.visionSummary ? `\n- visual style to match: ${ci.visionSummary}` : "";
+
+  // Use-case-specific design priorities. The selected output format changes
+  // what the layout should optimise for.
+  const USE_CASE_RULES = {
+    online: `OUTPUT USE CASE: ONLINE ADVERTISING (web banner / display ad)
+Prioritise: attention-grabbing visual impact and CONVERSION. One dominant message,
+a strong clear CTA (action verb), minimal supporting text. Assume the viewer
+glances for under 2 seconds — the headline + CTA must land instantly. Keep copy
+extremely short. The CTA should feel clickable and benefit-driven.`,
+    print: `OUTPUT USE CASE: PRINT (physical display / poster)
+Prioritise: readability at distance, generous margins, and a print-safe layout.
+Keep important text and the logo away from the very edges (safe area), since print
+is trimmed. Favour high legibility, strong contrast, and colours that survive CMYK
+printing (avoid relying on very bright RGB-only neon tones). Layout should be calm,
+well-spaced and legible from a few metres away.`,
+    social: `OUTPUT USE CASE: SOCIAL MEDIA (mobile feed / story)
+Prioritise: MOBILE readability and fast visual impact. Big, bold, thumb-stopping
+headline that reads on a small screen. Very short copy. High contrast. Assume the
+viewer scrolls fast — the first glance must communicate the whole message. Keep
+key content centred and away from screen edges (UI overlaps top/bottom on stories).`,
+    presentation: `OUTPUT USE CASE: PRESENTATION SLIDE
+Prioritise: clarity and hierarchy for an audience viewing from a distance. One clear
+idea per slide, large readable headline, minimal supporting points. Clean and
+uncluttered. High contrast so it reads on a projector or shared screen.`,
+  };
+  const ucRule = USE_CASE_RULES[ci.useCase] || "";
+  const ucBlock = ucRule ? ("\n" + ucRule + "\n") : "";
+
   return `BRAND
 - name: ${ci.name || "Unknown"}
 - primary color: ${ci.primary || (ci.colors && ci.colors[0]) || "#222"}
@@ -86,17 +134,17 @@ function buildUserPrompt(ci, product) {
 - fonts: ${fonts}
 - font character: ${feel} (thin/light = elegant; bold/black = energetic)
 - monochrome brand: ${mono}${aiNote}${visionNote}${visionSummary}
+${ucBlock}
+FORMAT (do NOT name the format in any text)
+- size: ${wcm} x ${hcm} cm  (ratio ${ratio}, ${orient})
+- design for this ${orient} proportion.
 
-PRINT PRODUCT (physical format only — do NOT name it in any text)
-- trim size: ${wcm} x ${hcm} cm  (ratio ${ratio}, ${orient})
-- this is a physical ${orient} display; design for that proportion.
-
-IMPORTANT: This is a physical display format. Its internal product/format name
-must NEVER appear in the title, eyebrow, subtitle, points, CTA, footer, or any
-other text. Write campaign copy about the BRAND only, never about the display
-hardware. Decide the DESIGN CHARACTER that matches THIS brand (don't default to
-dark/bold), then design the layout plan. If the brand reads elegant/minimal/
-monochrome, make it LIGHT, airy, thin, with few words. Return ONLY the JSON object.`;
+IMPORTANT: The format's internal name must NEVER appear in the title, eyebrow,
+subtitle, points, CTA, footer, or any other text. Write campaign copy about the
+BRAND only. Decide the DESIGN CHARACTER that matches THIS brand (don't default to
+dark/bold) AND respects the output use case above, then design the layout plan.
+If the brand reads elegant/minimal/monochrome, make it LIGHT, airy, thin, with few
+words. Return ONLY the JSON object.`;
 }
 
 export async function planLayout(ci, product, opts) {
