@@ -10,6 +10,48 @@
 // flat picture).
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
+
+// callPlannerLLM: routes the layout-planning call to either Claude or OpenAI.
+// Switch provider with env LAYOUT_PROVIDER = "openai" | "anthropic" (default
+// anthropic). Returns the raw text the model produced (JSON string), so callers
+// parse it the same way regardless of provider. Easy to flip back anytime.
+async function callPlannerLLM(systemPrompt, userPrompt, { temperature = 0.7, maxTokens = 1200, forceJsonObject = false } = {}) {
+  const provider = (process.env.LAYOUT_PROVIDER || "anthropic").toLowerCase();
+  if (provider === "openai") {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) return { error: "No OPENAI_API_KEY set on the server." };
+    const model = process.env.OPENAI_TEXT_MODEL || "gpt-4o-mini";
+    const body = {
+      model, temperature, max_tokens: maxTokens,
+      messages: [ { role: "system", content: systemPrompt }, { role: "user", content: userPrompt } ],
+    };
+    // JSON mode only guarantees a JSON *object*; for array outputs we leave it off
+    // and rely on the prompt + fence-stripping (same as before).
+    if (forceJsonObject) body.response_format = { type: "json_object" };
+    const res = await fetch(OPENAI_CHAT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return { error: `LLM request failed (${res.status}): ${(await res.text()).slice(0,200)}` };
+    const data = await res.json();
+    return { text: data?.choices?.[0]?.message?.content || "" };
+  }
+  // default: Anthropic (Claude)
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return { error: "No ANTHROPIC_API_KEY set on the server." };
+  const model = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-20241022";
+  const res = await fetch(ANTHROPIC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({ model, max_tokens: maxTokens, temperature, system: systemPrompt, messages: [ { role: "user", content: userPrompt } ] }),
+  });
+  if (!res.ok) return { error: `LLM request failed (${res.status}): ${(await res.text()).slice(0,200)}` };
+  const data = await res.json();
+  const text = Array.isArray(data?.content) ? data.content.filter(b => b.type === "text").map(b => b.text).join("") : "";
+  return { text };
+}
 
 // The schema we ask the model to fill. Keeping it small + explicit makes the
 // output reliable and easy for the generator to consume.
@@ -135,56 +177,18 @@ export async function planLayout(ci, product, opts) {
   if (opts.previewOnly) {
     return { preview: true, systemPrompt, userPrompt };
   }
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) {
-    return { error: "No ANTHROPIC_API_KEY set on the server. Add it in Render → Environment." };
-  }
-  const model = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-20241022";
 
-  // Anthropic Messages API: system prompt is a top-level field; we nudge the
-  // model to reply with JSON only and parse the first text block.
-  const body = {
-    model,
-    max_tokens: 1024,
-    temperature: 0.7,
-    system: systemPrompt,
-    messages: [
-      { role: "user", content: userPrompt },
-    ],
-  };
-
+  // planLayout returns a single JSON object → JSON mode is safe to force on OpenAI.
+  const out = await callPlannerLLM(systemPrompt, userPrompt, { temperature: 0.7, maxTokens: 1024, forceJsonObject: true });
+  if (out.error) return { error: out.error };
+  let content = (out.text || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+  let plan;
   try {
-    const res = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const txt = await res.text();
-      return { error: `LLM request failed (${res.status}): ${txt.slice(0, 200)}` };
-    }
-    const data = await res.json();
-    // response shape: { content: [ { type:"text", text:"..." }, ... ] }
-    let content = "";
-    if (Array.isArray(data?.content)) {
-      content = data.content.filter(b => b.type === "text").map(b => b.text).join("");
-    }
-    // strip any accidental code fences before parsing
-    content = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
-    let plan;
-    try {
-      plan = JSON.parse(content);
-    } catch {
-      return { error: "LLM did not return valid JSON.", raw: content.slice(0, 300) };
-    }
-    return { plan, systemPrompt, userPrompt };
-  } catch (e) {
-    return { error: String(e) };
+    plan = JSON.parse(content);
+  } catch {
+    return { error: "LLM did not return valid JSON.", raw: content.slice(0, 300) };
   }
+  return { plan, systemPrompt, userPrompt };
 }
 
 // planThreeVariants: ask the AI for THREE distinct layout plans for THIS brand
@@ -193,9 +197,6 @@ export async function planLayout(ci, product, opts) {
 // us forcing fixed layouts that look identical across every brand.
 export async function planThreeVariants(ci, product, opts) {
   opts = opts || {};
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return { error: "No ANTHROPIC_API_KEY set on the server." };
-  const model = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-20241022";
   const base = buildUserPrompt(ci, product);
   // The user picked an overall style direction (mood). Give each mood a CONCRETE
   // visual definition so the choice clearly changes the output, and so all three
@@ -216,31 +217,24 @@ Within that ${chosen} direction, make the three genuinely different from each ot
 (vary layout archetype, composition, emphasis, and light/dark where the style allows)
 and unique to THIS brand. Set "mood":"${chosen}" on all three.`
     : `\nMake the three genuinely different moods/directions, each true to the brand.`;
+  // Ask for an OBJECT { "plans": [...] } so OpenAI JSON mode can be used safely
+  // (JSON mode requires an object, not a bare array). Works for Claude too.
   const sys = LAYOUT_INSTRUCTIONS + `
 
 You will produce THREE DISTINCT layout concepts for the SAME brand and format.${moodLine}
 Do not output three near-identical designs. Think of them as three different
 creative directions a designer would pitch for this specific brand within the
 chosen style.
-Respond with ONLY a JSON array of exactly 3 plan objects: [ {plan1}, {plan2}, {plan3} ].
-Each object uses the exact plan shape described above. No prose, no markdown.`;
-  const body = {
-    model, max_tokens: 2048, temperature: 0.9,
-    system: sys,
-    messages: [{ role: "user", content: base + "\n\nReturn ONLY a JSON array of 3 distinct plan objects for this brand." }],
-  };
+Respond with ONLY a JSON object of this exact shape: { "plans": [ {plan1}, {plan2}, {plan3} ] }
+where each plan uses the exact plan shape described above. No prose, no markdown.`;
+  const userMsg = base + "\n\nReturn ONLY a JSON object { \"plans\": [3 distinct plan objects] } for this brand.";
   try {
-    const res = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) { const txt = await res.text(); return { error: `LLM request failed (${res.status}): ${txt.slice(0,200)}` }; }
-    const data = await res.json();
-    let content = Array.isArray(data?.content) ? data.content.filter(b => b.type === "text").map(b => b.text).join("") : "";
-    content = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
-    let plans;
-    try { plans = JSON.parse(content); } catch { return { error: "LLM did not return valid JSON array.", raw: content.slice(0,300) }; }
+    const out = await callPlannerLLM(sys, userMsg, { temperature: 0.9, maxTokens: 2048, forceJsonObject: true });
+    if (out.error) return { error: out.error };
+    let content = (out.text || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+    let parsed;
+    try { parsed = JSON.parse(content); } catch { return { error: "LLM did not return valid JSON.", raw: content.slice(0,300) }; }
+    let plans = Array.isArray(parsed) ? parsed : (parsed.plans || parsed.variants || []);
     if (!Array.isArray(plans)) plans = [plans];
     return { plans };
   } catch (e) {
