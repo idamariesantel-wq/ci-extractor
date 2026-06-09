@@ -252,9 +252,9 @@ Each object uses the exact plan shape described above. No prose, no markdown.`;
 // Used by the wording step so the user can pick a ready-made message or get
 // inspiration before writing their own. One small text call.
 export async function suggestCopy(ci, tone) {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return { error: "No ANTHROPIC_API_KEY set on the server." };
-  const model = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-20241022";
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return { error: "No OPENAI_API_KEY set on the server." };
+  const model = process.env.OPENAI_TEXT_MODEL || "gpt-4o-mini";
   const TONE_DEF = {
     professional: "professional: credible, polished, business-appropriate.",
     playful: "playful: fun, light, friendly, a bit cheeky.",
@@ -268,22 +268,30 @@ export async function suggestCopy(ci, tone) {
   const sys = `You are a brand copywriter. Propose THREE distinct campaign message
 ideas for the brand below, in the requested tone. Each idea = a short headline
 (<= 6 words) plus a one-line subtitle (<= 12 words). Do NOT mention the physical
-format or product type. Return ONLY JSON: [{"headline":"...","subtitle":"..."}, ...]
+format or product type. Return ONLY JSON: {"ideas":[{"headline":"...","subtitle":"..."}, ...]}
 exactly 3 items, no prose, no markdown.`;
   const user = `Brand: ${ci.name || "the brand"}
 ${ci.productContext ? "Product/context: " + ci.productContext + "\n" : ""}${toneLine}
 Write 3 ideas.`;
   try {
-    const res = await fetch(ANTHROPIC_URL, {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model, max_tokens: 600, temperature: 0.9, system: sys, messages: [{ role: "user", content: user }] }),
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+      body: JSON.stringify({
+        model,
+        temperature: 0.9,
+        max_tokens: 600,
+        response_format: { type: "json_object" },
+        messages: [ { role: "system", content: sys }, { role: "user", content: user } ],
+      }),
     });
-    if (!res.ok) return { error: `Copy request failed (${res.status})` };
+    if (!res.ok) return { error: `Copy request failed (${res.status}): ${(await res.text()).slice(0,160)}` };
     const data = await res.json();
-    let txt = Array.isArray(data?.content) ? data.content.filter(b=>b.type==="text").map(b=>b.text).join("") : "";
+    let txt = data?.choices?.[0]?.message?.content || "";
     txt = txt.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
-    let ideas = JSON.parse(txt);
+    let parsed = JSON.parse(txt);
+    // accept {"ideas":[...]} or a bare array
+    let ideas = Array.isArray(parsed) ? parsed : (parsed.ideas || []);
     if (!Array.isArray(ideas)) ideas = [ideas];
     return { ideas: ideas.slice(0, 3) };
   } catch (e) {
