@@ -122,6 +122,55 @@ async function renderImage(prompt, size) {
   } finally { clearTimeout(timer); }
 }
 
+// Stage 2b (image-to-image): refine a reference image toward the brief. Uses
+// OpenAI's images/edits endpoint (gpt-image-1), which takes the reference image
+// as a multipart upload plus a prompt. This is the "send the background back to
+// itself as a reference" step — it nudges the first background toward the brand
+// style for higher consistency, rather than generating from scratch again.
+async function renderImageToImage(prompt, size, refDataUrl) {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return { error: "No OPENAI_API_KEY." };
+  const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
+  const quality = process.env.OPENAI_IMAGE_QUALITY || "medium";
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 120000);
+  try {
+    // strip the data URL header → raw base64 → Buffer for the multipart upload
+    const m = /^data:(image\/[a-z]+);base64,(.*)$/i.exec(refDataUrl || "");
+    if (!m) return { error: "Reference image is not a valid data URL." };
+    const mime = m[1]; const buf = Buffer.from(m[2], "base64");
+    const form = new FormData();
+    form.append("model", model);
+    form.append("prompt", prompt);
+    form.append("size", size);
+    form.append("quality", quality);
+    form.append("n", "1");
+    // Node 18+ has Blob/FormData globally
+    form.append("image", new Blob([buf], { type: mime }), "reference.png");
+    const res = await fetch("https://api.openai.com/v1/images/edits", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${key}` },  // no Content-Type; fetch sets the multipart boundary
+      body: form,
+      signal: ctrl.signal,
+    });
+    if (!res.ok) return { error: `Image-to-image failed (${res.status}): ${(await res.text()).slice(0,200)}` };
+    const data = await res.json();
+    const b64 = data?.data?.[0]?.b64_json;
+    if (b64) {
+      try {
+        const sharp = (await import("sharp")).default;
+        const inBuf = Buffer.from(b64, "base64");
+        const outBuf = await sharp(inBuf).resize({ width: 1280, withoutEnlargement: true }).jpeg({ quality: 78 }).toBuffer();
+        return { dataUrl: `data:image/jpeg;base64,${outBuf.toString("base64")}` };
+      } catch (e) { return { dataUrl: `data:image/png;base64,${b64}` }; }
+    }
+    return { error: "Image-to-image returned no image." };
+  } catch (e) {
+    if (e.name === "AbortError") return { error: "Image-to-image timed out." };
+    return { error: String(e) };
+  } finally { clearTimeout(timer); }
+}
+
 export async function generateBackground(ci, product) {
   if (!ci || !product || !product.trim) return { error: "Need ci and product with trim.w/h." };
   const t0 = Date.now();
@@ -142,7 +191,29 @@ export async function generateBackground(ci, product) {
   const t2 = Date.now();
   console.log(`[image] image-render took ${((t2-t1)/1000).toFixed(1)}s (size ${size})`);
   if (img.error) return { error: img.error, prompt };
-  return { prompt, size, image: img.dataUrl || img.url, timing: { promptMs: t1-t0, renderMs: t2-t1 } };
+  const firstImage = img.dataUrl || img.url;
+
+  // Optional two-stage image-to-image: send the freshly generated background back
+  // in as a REFERENCE and refine it toward the brand style. Enabled per-request
+  // (ci.useI2I) or globally (env USE_I2I=1). Falls back to the first image if the
+  // refine step fails, so it never breaks the basic flow.
+  const wantI2I = ci.useI2I || process.env.USE_I2I === "1";
+  if (wantI2I && firstImage && typeof firstImage === "string" && firstImage.startsWith("data:")) {
+    const refinePrompt = (process.env.FAST_IMAGE === "1")
+      ? directPrompt(ci, product) + " Refine this reference image to match the brand style more closely; keep the calm text area."
+      : prompt + " Use the supplied image as a style reference; refine it to match the brand style more closely while keeping a calm area for headline text.";
+    const t3 = Date.now();
+    const refined = await renderImageToImage(refinePrompt, size, firstImage);
+    const t4 = Date.now();
+    console.log(`[image] image-to-image refine took ${((t4-t3)/1000).toFixed(1)}s`);
+    if (!refined.error && refined.dataUrl) {
+      return { prompt, size, image: refined.dataUrl, stage: "image-to-image", reference: firstImage, timing: { promptMs: t1-t0, renderMs: t2-t1, refineMs: t4-t3 } };
+    }
+    // refine failed → return the first image, note why
+    return { prompt, size, image: firstImage, stage: "single (refine failed)", refineError: refined.error, timing: { promptMs: t1-t0, renderMs: t2-t1 } };
+  }
+
+  return { prompt, size, image: firstImage, stage: "single", timing: { promptMs: t1-t0, renderMs: t2-t1 } };
 }
 
 // directPrompt(): builds a background-image prompt from brand data without an
