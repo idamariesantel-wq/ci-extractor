@@ -29,22 +29,16 @@ async function writeImagePrompt(ci, product) {
   if (!key) return { error: "No ANTHROPIC_API_KEY (needed to write the image prompt)." };
   const model = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-20241022";
 
-  const sys = `You write prompts for an image generator that will produce a BACKGROUND
-graphic for a printed marketing display. Hard rules for the prompt you output:
-- The image must contain NO text, NO words, NO letters, NO numbers, NO logos.
-- It is a background/backdrop only: shapes, gradients, texture, abstract or
-  product-evocative imagery.
-- Leave a visually calm region (e.g. one side or lower third) where headline
-  text can be overlaid legibly later.
-- BALANCE the brand and the user's wishes — it must look ON-BRAND AND follow the
-  user's request:
-  • The brand colours are the BASE palette. Keep the result recognisably on-brand.
-  • The user's requests + chosen style shape the MOOD, theme, composition and
-    energy (e.g. "olympics-like" => dynamic, sporty, motion, rings/arcs feel).
-  • ONLY if the user EXPLICITLY asks for different colours (e.g. "make it colourful",
-    "use gold and red") do you expand or shift the palette — and even then, weave
-    the brand's primary colour in so it still ties back to the brand.
-  Never throw the brand away, and never ignore the user. Combine both.
+  const sys = `You write prompts for an image generator producing a BACKGROUND graphic
+for a printed marketing display. Rules for the prompt you output:
+- NO text, words, letters, numbers or logos. Background/backdrop only: shapes,
+  gradients, texture, abstract or product-evocative imagery.
+- Leave a calm region (one side or lower third) for headline text added later.
+- BALANCE brand + user: brand colours are the BASE palette (keep it recognisably
+  on-brand); the user's requests + chosen style shape mood/theme/composition (e.g.
+  "olympics-like" => dynamic, sporty, motion). ONLY if the user explicitly asks for
+  other colours do you expand the palette — and still weave the brand colour in.
+  Never drop the brand, never ignore the user.
 Output ONLY the prompt text, one paragraph, no preamble.`;
 
   // Style + user notes shape the mood; brand colours stay the base palette.
