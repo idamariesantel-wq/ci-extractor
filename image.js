@@ -30,36 +30,44 @@ async function writeImagePrompt(ci, product) {
   const model = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-20241022";
 
   const sys = `You write prompts for an image generator producing a BACKGROUND graphic
-for a printed marketing display. Rules for the prompt you output:
-- NO text, words, letters, numbers or logos. Background/backdrop only: shapes,
-  gradients, texture, abstract or product-evocative imagery.
-- Leave a calm region (one side or lower third) for headline text added later.
-- BALANCE brand + user: brand colours are the BASE palette (keep it recognisably
-  on-brand); the user's requests + chosen style shape mood/theme/composition (e.g.
-  "olympics-like" => dynamic, sporty, motion). ONLY if the user explicitly asks for
-  other colours do you expand the palette — and still weave the brand colour in.
-  Never drop the brand, never ignore the user.
+for a marketing display. Rules for the prompt you output:
+- NO text, words, letters, numbers or logos. Background/backdrop only.
+- Make it VISUALLY RICH and appealing — depth, lighting, gradients, texture,
+  atmosphere, subtle motion. Avoid flat, empty, dull or near-black results; even
+  a dark design should have glow, dimension and energy. It should look like a
+  polished campaign background, not a plain wallpaper.
+- EVOKE THE BRAND'S INDUSTRY/PRODUCT through abstract atmosphere and materials
+  (e.g. tech → sleek surfaces, circuitry-like light, depth; beauty → soft glow,
+  silk; food → warm organic texture). Suggest the world of the product WITHOUT
+  drawing a single literal clip-art object or icon (no lone house, no lone phone).
+- Keep one calmer region (a side or lower third) where headline text will sit,
+  but the rest should be interesting.
+- BALANCE brand + user: brand colours are the BASE palette (recognisably on-brand);
+  the user's requests + chosen style shape mood/theme/composition. ONLY if the user
+  explicitly asks for other colours do you expand the palette — still weaving the
+  brand colour in. Never drop the brand, never ignore the user.
 Output ONLY the prompt text, one paragraph, no preamble.`;
 
   // Style + user notes shape the mood; brand colours stay the base palette.
   const STYLE_BRIEF = {
-    technical: "technical and precise: blueprint/grid feel, fine lines, schematic, engineered, structured.",
-    clean: "clean and uncluttered: smooth surfaces, lots of calm negative space, neutral and tidy.",
-    minimal: "minimal: almost empty, one subtle gradient or shape, maximal restraint.",
-    abstract: "abstract: flowing organic or geometric forms, artistic, non-literal.",
-    premium: "premium and luxurious: rich depth, subtle sheen, refined materials, high-end and elegant.",
-    edgy: "edgy and raw: high contrast, bold asymmetry, gritty texture, daring and unconventional.",
-    funky: "funky and retro: playful shapes, expressive unexpected colour combinations, energetic.",
-    motivating: "motivating and energetic: dynamic movement, uplifting light, forward energy.",
+    technical: "technical and precise: sleek engineered surfaces, glowing fine lines and depth, high-tech atmosphere (not flat schematics).",
+    clean: "clean and refined: smooth surfaces, soft gradients, calm but with subtle depth and light.",
+    minimal: "minimal but premium: restrained, one elegant gradient or form, refined lighting, never empty or dull.",
+    abstract: "abstract: flowing organic or geometric forms, rich colour, artistic and dynamic.",
+    premium: "premium and luxurious: rich depth, subtle sheen, refined materials, sophisticated lighting.",
+    edgy: "edgy and raw: high contrast, bold asymmetry, gritty texture, dramatic lighting.",
+    funky: "funky and retro: playful shapes, expressive vivid colour combinations, energetic.",
+    motivating: "motivating and energetic: dynamic movement, uplifting light, glowing forward energy.",
   };
   const styleKey = ci.direction || "";
   const styleLine = styleKey ? `\nStyle to express: ${STYLE_BRIEF[styleKey] || styleKey}` : "";
   const notesLine = ci.directionNotes ? `\nUser's requests (shape the mood/theme around this, keep it on-brand): ${ci.directionNotes}` : "";
+  const industryLine = ci.productContext ? `\nBrand industry/product to evoke (atmospherically, NO literal objects): ${ci.productContext}` : "";
   const palette = (ci.colors || []).join(", ") || ci.primary || "#222";
-  const user = `Make an ON-BRAND background for "${ci.name || "the brand"}".
-Brand colours (base palette — keep it recognisably on-brand): ${palette}${notesLine}${styleLine}
+  const user = `Make a VISUALLY RICH, on-brand campaign background for "${ci.name || "the brand"}".
+Brand colours (base palette — keep it recognisably on-brand): ${palette}${industryLine}${notesLine}${styleLine}
 Proportion: ${(product.trim.w/product.trim.h).toFixed(2)} (${product.trim.w>=product.trim.h?"wide/landscape":"tall/portrait"}).
-Write the background-image prompt: on-brand colours as the base, with the user's requests and style shaping the mood and composition.`;
+Write the background-image prompt: rich and appealing, evoking the industry atmospherically (no literal icons), on-brand colours as the base, with the user's requests and style shaping the mood. Keep one calmer region for headline text.`;
 
   try {
     const res = await fetch(ANTHROPIC_URL, {
