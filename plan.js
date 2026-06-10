@@ -208,14 +208,30 @@ export async function planThreeVariants(ci, product, opts) {
     playful: `PLAYFUL/FRESH: lively, rounded, generous accent colour use, friendly and energetic but not heavy. Layouts: "bold-block" or "centered".`,
   };
   const chosen = ci.moodHint || ci.mood || null;
+  // Layout archetypes available per mood — we tell the model to pick a DIFFERENT
+  // one for each of the three, so the variants are structurally distinct, not just
+  // recoloured copies of the same layout.
+  const MOOD_LAYOUTS = {
+    elegant: '"luxury", "centered", "minimal"',
+    bold: '"hero", "bold-block", "split"',
+    corporate: '"split", "editorial", "centered"',
+    playful: '"bold-block", "centered", "editorial"',
+  };
+  const layoutChoices = chosen ? (MOOD_LAYOUTS[chosen] || '"hero", "split", "editorial"') : '"hero", "split", "editorial"';
   const moodLine = chosen
     ? `\nThe user chose the overall style: "${chosen}".
 DEFINITION — ${MOOD_DEF[chosen] || chosen}
 ALL THREE concepts MUST clearly express this "${chosen}" style (do NOT drift toward
 another mood, and do NOT default to dark/bold if the chosen style is elegant).
-Within that ${chosen} direction, make the three genuinely different from each other
-(vary layout archetype, composition, emphasis, and light/dark where the style allows)
-and unique to THIS brand. Set "mood":"${chosen}" on all three.`
+BUT make the three look GENUINELY DIFFERENT from each other — like three separate
+designs, not variations of one:
+- Give each a DIFFERENT layout archetype (use a different one for each, chosen from: ${layoutChoices}).
+- Vary the COMPOSITION: where the headline sits, alignment (left vs centered),
+  whether points are shown, CTA placement, and light vs dark background WHERE the
+  ${chosen} style allows it.
+- Vary the EMPHASIS: one can be headline-dominant, one more balanced with points,
+  one minimal and spacious.
+Set "mood":"${chosen}" on all three, but no two should share the same "layout" value.`
     : `\nMake the three genuinely different moods/directions, each true to the brand.`;
   // Ask for an OBJECT { "plans": [...] } so OpenAI JSON mode can be used safely
   // (JSON mode requires an object, not a bare array). Works for Claude too.
@@ -229,7 +245,7 @@ Respond with ONLY a JSON object of this exact shape: { "plans": [ {plan1}, {plan
 where each plan uses the exact plan shape described above. No prose, no markdown.`;
   const userMsg = base + "\n\nReturn ONLY a JSON object { \"plans\": [3 distinct plan objects] } for this brand.";
   try {
-    const out = await callPlannerLLM(sys, userMsg, { temperature: 0.9, maxTokens: 2048, forceJsonObject: true });
+    const out = await callPlannerLLM(sys, userMsg, { temperature: 1.0, maxTokens: 2048, forceJsonObject: true });
     if (out.error) return { error: out.error };
     let content = (out.text || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
     let parsed;
