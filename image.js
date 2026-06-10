@@ -185,7 +185,10 @@ export async function generateBackground(ci, product) {
   // Speed option: when FAST_IMAGE is set, build the prompt directly from brand
   // data instead of calling Claude first (saves one API round-trip).
   let prompt;
-  if (process.env.FAST_IMAGE === "1") {
+  if (ci.promptOverride && String(ci.promptOverride).trim()) {
+    // The user edited the background prompt in the review step — use it verbatim.
+    prompt = String(ci.promptOverride).trim();
+  } else if (process.env.FAST_IMAGE === "1") {
     prompt = directPrompt(ci, product);
   } else {
     const p = await writeImagePrompt(ci, product);

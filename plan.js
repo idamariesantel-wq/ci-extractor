@@ -243,7 +243,12 @@ creative directions a designer would pitch for this specific brand within the
 chosen style.
 Respond with ONLY a JSON object of this exact shape: { "plans": [ {plan1}, {plan2}, {plan3} ] }
 where each plan uses the exact plan shape described above. No prose, no markdown.`;
-  const userMsg = base + "\n\nReturn ONLY a JSON object { \"plans\": [3 distinct plan objects] } for this brand.";
+  // If the user edited the layout/design prompt in the review step, use their text
+  // as the instruction — but ALWAYS append the JSON-shape requirement so the
+  // output still parses (a free-text edit must not break the format).
+  const userMsg = (ci.layoutPromptOverride && String(ci.layoutPromptOverride).trim())
+    ? String(ci.layoutPromptOverride).trim() + "\n\nReturn ONLY a JSON object { \"plans\": [3 distinct plan objects] } using the exact plan shape described above."
+    : base + "\n\nReturn ONLY a JSON object { \"plans\": [3 distinct plan objects] } for this brand.";
   try {
     const out = await callPlannerLLM(sys, userMsg, { temperature: 1.0, maxTokens: 2048, forceJsonObject: true });
     if (out.error) return { error: out.error };
@@ -280,7 +285,9 @@ ideas for the brand below, in the requested tone. Each idea = a short headline
 (<= 6 words) plus a one-line subtitle (<= 12 words). Do NOT mention the physical
 format or product type. Return ONLY JSON: {"ideas":[{"headline":"...","subtitle":"..."}, ...]}
 exactly 3 items, no prose, no markdown.`;
-  const user = `Brand: ${ci.name || "the brand"}
+  const user = (ci.copyPromptOverride && String(ci.copyPromptOverride).trim())
+    ? String(ci.copyPromptOverride).trim() + "\nReturn ONLY JSON: {\"ideas\":[{\"headline\":\"...\",\"subtitle\":\"...\"}, ...]} exactly 3 items."
+    : `Brand: ${ci.name || "the brand"}
 ${ci.productContext ? "Product/context: " + ci.productContext + "\n" : ""}${toneLine}
 Write 3 ideas.`;
   try {
