@@ -179,14 +179,15 @@ async function renderImageToImage(prompt, size, refDataUrl) {
   } finally { clearTimeout(timer); }
 }
 
-export async function generateBackground(ci, product) {
+export async function generateBackground(ci, product, opts) {
+  opts = opts || {};
   if (!ci || !product || !product.trim) return { error: "Need ci and product with trim.w/h." };
   const t0 = Date.now();
   // Speed option: when FAST_IMAGE is set, build the prompt directly from brand
   // data instead of calling Claude first (saves one API round-trip).
   let prompt;
   if (ci.promptOverride && String(ci.promptOverride).trim()) {
-    // The user edited the background prompt in the review step — use it verbatim.
+    // The user edited the background prompt — use it verbatim.
     prompt = String(ci.promptOverride).trim();
   } else if (process.env.FAST_IMAGE === "1") {
     prompt = directPrompt(ci, product);
@@ -194,6 +195,11 @@ export async function generateBackground(ci, product) {
     const p = await writeImagePrompt(ci, product);
     if (p.error) return { error: p.error };
     prompt = p.prompt;
+  }
+  // previewOnly: return the prompt the generator WOULD use, without spending an
+  // image call — lets the UI show an editable suggested prompt before generating.
+  if (opts.previewOnly) {
+    return { preview: true, prompt };
   }
   const t1 = Date.now();
   console.log(`[image] prompt-prep took ${((t1-t0)/1000).toFixed(1)}s`);
