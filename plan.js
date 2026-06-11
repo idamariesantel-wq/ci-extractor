@@ -84,7 +84,7 @@ Output JSON with EXACTLY this shape (no prose, no markdown):
 {
   "orientation": "wide" | "tall",
   "mood": "elegant" | "bold" | "minimal" | "playful" | "corporate",
-  "layout": "editorial" | "centered" | "bold-block" | "split" | "minimal" | "luxury" | "hero",
+  "layout": "editorial" | "centered" | "bold-block" | "split" | "minimal" | "luxury" | "hero" | "band" | "corner" | "statement",
   "background": "light" | "dark" | "primary",
   "density": "airy" | "balanced" | "dense",
   "logo": { "position": "top-left" | "top-right" | "top-center", "sizeHint": "small" | "medium" | "large" },
@@ -107,6 +107,9 @@ Layout guide (one line each):
 - bold-block: accent panels behind eyebrow/highlight — energetic/youthful
 - split: side rail + tidy grid of points — structured/informational
 - minimal: type + CTA only, no points — single-message
+- band: headline inside a full accent band at top, points below — strong/poster-like
+- corner: headline anchored bottom-left, open airy canvas — editorial/gallery
+- statement: one giant centred headline, no points — maximum impact
 For elegant/minimal moods prefer airy density and few/zero points. Vary by brand.`;
 
 function buildUserPrompt(ci, product) {
@@ -212,10 +215,10 @@ export async function planThreeVariants(ci, product, opts) {
   // one for each of the three, so the variants are structurally distinct, not just
   // recoloured copies of the same layout.
   const MOOD_LAYOUTS = {
-    elegant: '"luxury", "centered", "minimal"',
-    bold: '"hero", "bold-block", "split"',
-    corporate: '"split", "editorial", "centered"',
-    playful: '"bold-block", "centered", "editorial"',
+    elegant: '"luxury", "centered", "minimal", "corner", "statement"',
+    bold: '"hero", "bold-block", "split", "band", "statement"',
+    corporate: '"split", "editorial", "centered", "band", "corner"',
+    playful: '"bold-block", "centered", "editorial", "band", "statement"',
   };
   const layoutChoices = chosen ? (MOOD_LAYOUTS[chosen] || '"hero", "split", "editorial"') : '"hero", "split", "editorial"';
   const moodLine = chosen
